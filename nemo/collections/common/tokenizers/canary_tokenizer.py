@@ -180,7 +180,7 @@ class CanaryTokenizer(AggregateTokenizer):
         text_path.write_text(train_text)
         model_path = output_dir / "tokenizer.model"
         create_spt_model(
-            str(text_path),
+            data_file=str(text_path),
             vocab_size=len(tokens) + 2,
             sample_size=-1,
             do_lower_case=False,

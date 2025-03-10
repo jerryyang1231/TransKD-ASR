@@ -12,6 +12,10 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+# note
+# 因為/share/nas169/jerryyang/miniconda3/envs/nemo/lib/python3.10/site-packages/nemo/utils/少了這個檔案，
+# 所以我手動複製過去
+
 from typing import Mapping
 
 _HAS_HYDRA = True

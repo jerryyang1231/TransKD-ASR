@@ -94,6 +94,14 @@
 #
 #   --log: Whether the script should display log messages
 
+# my command
+# python process_asr_text_tokenizer.py \
+#        --manifest=/share/nas169/jerryyang/corpus/fleurs/en_us/manifest_canary/train_manifest.json \
+#        --data_root=/share/nas169/jerryyang/NeMo/examples/asr/speech_multitask/nemo_experiments/english_tokenizer \
+#        --vocab_size 1024 \
+#        --tokenizer spe \
+#        --spe_type bpe \
+#        --log
 
 import argparse
 import json
@@ -102,7 +110,9 @@ import os
 from typing import List, Optional
 
 import tokenizers
-
+import sys
+# print(sys.path)
+sys.path.insert(0, "/share/nas169/jerryyang/NeMo")
 from nemo.collections.common.tokenizers.sentencepiece_tokenizer import create_spt_model
 from nemo.utils.data_utils import DataStoreObject
 
@@ -190,9 +200,9 @@ def __build_document_from_manifests(
 
     document_path = os.path.join(document_dir, 'document.txt')
 
-    if os.path.exists(document_path):
-        logging.info('Corpus already exists at path : %s', document_path)
-        return document_path
+    # if os.path.exists(document_path):
+    #     logging.info('Corpus already exists at path : %s', document_path)
+    #     return document_path
 
     num_lines = 0
     with open(document_path, 'w') as out_writer:
@@ -201,7 +211,8 @@ def __build_document_from_manifests(
                 for line in in_reader:
                     item = json.loads(line)
                     text = item['text']
-
+                    # text = item['answer']
+                    
                     out_writer.write(text + '\n')
                     out_writer.flush()
 

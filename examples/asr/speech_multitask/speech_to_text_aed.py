@@ -1,5 +1,5 @@
-# Copyright (c) 2024, NVIDIA CORPORATION.  All rights reserved.
-#
+# # Copyright (c) 2024, NVIDIA CORPORATION.  All rights reserved.
+# #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
 # You may obtain a copy of the License at
@@ -52,12 +52,18 @@ python speech_to_text_aed.py \
 """
 import lightning.pytorch as pl
 from omegaconf import OmegaConf
-
+import sys
+# print(sys.path)
+sys.path.insert(0, "/share/nas169/jerryyang/NeMo")
 from nemo.collections.asr.models import EncDecMultiTaskModel
 from nemo.core.config import hydra_runner
 from nemo.utils import logging, model_utils
 from nemo.utils.exp_manager import exp_manager
 from nemo.utils.trainer_utils import resolve_trainer_cfg
+# import os
+# os.environ["WANDB_CONFIG_DIR"] = "/share/nas169/jerryyang/NeMo/examples/asr/speech_multitask/nemo_experiments/wandb"
+# os.environ["WANDB_DIR"] = "/share/nas169/jerryyang/NeMo/examples/asr/speech_multitask/nemo_experiments/wandb"
+# os.environ["TMPDIR"] = "/share/nas169/jerryyang/NeMo/examples/asr/speech_multitask/nemo_experiments/tmp"
 
 
 @hydra_runner(config_path="../conf/speech_multitask/", config_name="fast-conformer_aed")

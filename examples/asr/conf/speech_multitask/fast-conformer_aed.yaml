@@ -17,9 +17,9 @@ init_from_nemo_model: null
 # Similar can be done by calling CanaryTokenizer.build_special_tokenizer(tokens, output_dir).
 # If a tokenizer exists in dir, will skip building and use already built tokenizer.
 spl_tokens:
-  model_dir: ???
+  model_dir: /share/nas169/jerryyang/NeMo/examples/asr/speech_multitask/nemo_experiments/special_tokenizer_text
   tokens: ["translate", "transcribe", "en", "es", "de", "fr"]
-  force_rebuild: False  # Set to True to build new tokenizer each time.
+  force_rebuild: True  # Set to True to build new tokenizer each time.
 
 model:
   sample_rate: 16000
@@ -28,7 +28,7 @@ model:
   log_prediction: true # enables logging sample predictions in the output during training
 
   # Important ! Set the prompt format to the class you need
-  prompt_format: ???   # Options supported: ["canary"]
+  prompt_format: "canary"  # Options supported: ["canary"]
   prompt_defaults: null
 
   model_defaults:
@@ -39,7 +39,7 @@ model:
   train_ds:
     use_lhotse: true
     tarred_audio_filepaths: null
-    manifest_filepath: ???
+    manifest_filepath: /share/nas169/jerryyang/corpus/fleurs/en_us/manifest_canary/train_manifest.json
     sample_rate: ${model.sample_rate}
     shuffle: true
     num_workers: 8
@@ -48,7 +48,7 @@ model:
     # You can also check the following configuration dataclass:
     # https://github.com/NVIDIA/NeMo/blob/main/nemo/collections/common/data/lhotse/dataloader.py#L36
     batch_size: null
-    batch_duration: 360
+    batch_duration: 160
     quadratic_duration: 15
     use_bucketing: True
     num_buckets: 20
@@ -57,7 +57,7 @@ model:
 
   validation_ds:
     use_lhotse: true
-    manifest_filepath: ???
+    manifest_filepath: /share/nas169/jerryyang/corpus/fleurs/en_us/manifest_canary/validation_manifest.json
     sample_rate: ${model.sample_rate}
     batch_size: 8 # you may increase batch_size if your memory allows
     shuffle: false
@@ -68,7 +68,7 @@ model:
 
   test_ds:
     use_lhotse: true
-    manifest_filepath: ???
+    manifest_filepath: /share/nas169/jerryyang/corpus/fleurs/en_us/manifest_canary/test_manifest.json
     sample_rate: ${model.sample_rate}
     batch_size: 8 # you may increase batch_size if your memory allows
     shuffle: false
@@ -87,7 +87,7 @@ model:
         dir: null # Passed in training script
         type: bpe
       en: # English tokenizer (example, replace with whichever language you would like or add tokenizers to add tokenizer for additional languages) 
-        dir: ???
+        dir: /share/nas169/jerryyang/NeMo/examples/asr/speech_multitask/nemo_experiments/english_tokenizer/tokenizer_spe_bpe_v1024
         type: bpe
 
     custom_tokenizer:
@@ -243,7 +243,7 @@ model:
       min_lr: 1e-6
 
 trainer:
-  devices: -1 # number of GPUs, -1 would use all available GPUs
+  devices: 1 # number of GPUs
   num_nodes: 1
   max_epochs: -1
   max_steps: 100000 # computed at runtime if not set
@@ -271,18 +271,18 @@ exp_manager:
   create_checkpoint_callback: true
   checkpoint_callback_params:
     # in case of multiple validation sets, first one is used
-    monitor: "val_sacreBLEU"
-    mode: "max"
+    monitor: "val_wer"
+    mode: "min"
     save_top_k: 3
     always_save_nemo: True # saves the checkpoints as nemo files instead of PTL checkpoints
 
   resume_from_checkpoint: null # The path to a checkpoint file to continue the training, restores the whole state including the epoch, step, LR schedulers, apex, etc.
   # you need to set these two to True to continue the training
-  resume_if_exists: true
+  resume_if_exists: false
   resume_ignore_no_checkpoint: false
 
   # You may use this section to create a W&B logger
   create_wandb_logger: false
   wandb_logger_kwargs:
-    name: null
-    project: null
+    name: canary
+    project: test
