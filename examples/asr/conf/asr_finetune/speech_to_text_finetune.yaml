@@ -2,13 +2,14 @@ name: "Speech_To_Text_Finetuning"
 
 # use `init_from_nemo_model` or `init_from_pretrained_model` to initialize the model
 # We do not currently support `init_from_ptl_ckpt` to create a single script for all types of models.
-init_from_nemo_model: null # path to nemo model
+init_from_pretrained_model: "nvidia/canary-1b"
 
 model:
   sample_rate: 16000
 
   train_ds:
-    manifest_filepath: ???
+    use_lhotse: true
+    manifest_filepath: /share/nas169/jerryyang/corpus/fleurs/en_us/manifest_canary/train_manifest.json
     sample_rate: ${model.sample_rate}
     batch_size: 16 # you may increase batch_size if your memory allows
     shuffle: true
@@ -25,7 +26,8 @@ model:
     bucketing_batch_size: null
 
   validation_ds:
-    manifest_filepath: ???
+    use_lhotse: true
+    manifest_filepath: /share/nas169/jerryyang/corpus/fleurs/en_us/manifest_canary/validation_manifest.json
     sample_rate: ${model.sample_rate}
     batch_size: 16
     shuffle: false
@@ -34,7 +36,8 @@ model:
     pin_memory: true
 
   test_ds:
-    manifest_filepath: null
+    use_lhotse: true
+    manifest_filepath: /share/nas169/jerryyang/corpus/fleurs/en_us/manifest_canary/test_manifest.json
     sample_rate: ${model.sample_rate}
     batch_size: 16
     shuffle: false

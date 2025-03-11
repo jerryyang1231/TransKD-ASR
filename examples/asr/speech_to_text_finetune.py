@@ -56,7 +56,8 @@ https://docs.nvidia.com/deeplearning/nemo/user-guide/docs/en/main/asr/configs.ht
 import time
 import lightning.pytorch as pl
 from omegaconf import OmegaConf
-
+import sys
+sys.path.insert(0, "/share/nas169/jerryyang/NeMo")
 from nemo.collections.asr.models import ASRModel
 from nemo.core.config import hydra_runner
 from nemo.utils import logging, model_utils
@@ -191,7 +192,8 @@ def setup_dataloaders(asr_model, cfg):
     return asr_model
 
 
-@hydra_runner(config_path="conf/asr_finetune", config_name="speech_to_text_finetune")
+# @hydra_runner(config_path="conf/asr_finetune", config_name="speech_to_text_finetune")
+@hydra_runner(config_path="conf/speech_multitask/", config_name="fast-conformer_aed")
 def main(cfg):
     logging.info(f'Hydra config: {OmegaConf.to_yaml(cfg)}')
 
@@ -219,6 +221,10 @@ def main(cfg):
         asr_model.spec_augment = ASRModel.from_config_dict(cfg.model.spec_augment)
 
     trainer.fit(asr_model)
+    
+    if hasattr(cfg.model, 'test_ds') and cfg.model.test_ds.manifest_filepath is not None:
+        if asr_model.prepare_test(trainer):
+            trainer.test(asr_model)
 
 
 if __name__ == '__main__':

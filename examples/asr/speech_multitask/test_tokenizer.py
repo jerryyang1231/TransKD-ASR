@@ -22,9 +22,12 @@ agg_tokenizer = CanaryTokenizer(tokenizers=tokenizer_dict)
 
 # 測試英文句子
 sentence = "This is a test sentence."
-encoded = agg_tokenizer.text_to_ids(sentence, lang_id="en")
-decoded = agg_tokenizer.ids_to_text(encoded)
+# encoded = agg_tokenizer.text_to_ids(sentence, lang_id="en")
+# decoded = agg_tokenizer.ids_to_text(encoded)
+encoded_special = agg_tokenizer.text_to_ids("<|translate|>", lang_id="spl_tokens")
+decoded = agg_tokenizer.ids_to_text(encoded_special)
 
 print("原始句子：", sentence)
-print("編碼後：", encoded)
+# print("編碼後：", encoded)
+print("編碼後：", encoded_special)
 print("解碼後：", decoded)
