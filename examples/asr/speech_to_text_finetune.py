@@ -221,10 +221,6 @@ def main(cfg):
         asr_model.spec_augment = ASRModel.from_config_dict(cfg.model.spec_augment)
 
     trainer.fit(asr_model)
-    
-    if hasattr(cfg.model, 'test_ds') and cfg.model.test_ds.manifest_filepath is not None:
-        if asr_model.prepare_test(trainer):
-            trainer.test(asr_model)
 
 
 if __name__ == '__main__':

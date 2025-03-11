@@ -77,9 +77,14 @@ model:
     use_start_end_token: true
     use_bucketing: false
 
+  char_labels: # use for char based models
+    update_labels: false
+    labels: null # example list config: \[' ', 'a', 'b', 'c'\]
+
   # recommend small vocab size of 128 or 256 when using 4x sub-sampling
   # you may find more detail on how to train a tokenizer at: /scripts/tokenizers/process_asr_text_tokenizer.py
   tokenizer:
+    update_tokenizer: true
     dir: null  # Null for aggregate tokenizers
     type: agg  # Can be either bpe (SentencePiece tokenizer) or wpe (WordPiece tokenizer) or `agg` for aggregate tokenizers
     langs:
@@ -87,8 +92,7 @@ model:
         dir: null # Passed in training script
         type: bpe
       en: # English tokenizer (example, replace with whichever language you would like or add tokenizers to add tokenizer for additional languages) 
-        # dir: /share/nas169/jerryyang/NeMo/examples/asr/speech_multitask/nemo_experiments/english_tokenizer/tokenizer_spe_bpe_v1024
-        dir: null
+        dir: /share/nas169/jerryyang/NeMo/examples/asr/speech_multitask/nemo_experiments/english_tokenizer/tokenizer_spe_bpe_v1024
         type: bpe
 
     custom_tokenizer:
