@@ -64,17 +64,6 @@ from nemo.utils.trainer_utils import resolve_trainer_cfg
 
 
 def get_base_model(trainer, cfg):
-    """
-    Returns the base model to be fine-tuned.
-    Currently supports two types of initializations:
-    1) `init_from_nemo_model`, and
-    2) `init_from_pretrained_model`.
-    Args:
-        trainer: PyTorch Lightning Trainer
-        cfg: config
-    Returns:
-        aed_model: EncDecMultiTaskModel instance
-    """
     aed_model = None
     nemo_model_path = cfg.get('init_from_nemo_model', None)
     pretrained_name = cfg.get('init_from_pretrained_model', None)
@@ -110,23 +99,13 @@ def get_base_model(trainer, cfg):
     return aed_model
 
 def check_vocabulary(aed_model, cfg):
-    """
-    Checks if the decoder and vocabulary of the model needs to be updated.
-    If either of them needs to be updated, it updates them and returns the updated model.
-    else vocabulary will be reused from the pre-trained model.
-    Args:
-        aed_model: EncDecMultiTaskModel instance
-        cfg: config
-    Returns:
-        aed_model: EncDecMultiTaskModel instance with updated decoder and vocabulary
-    """
     if hasattr(cfg.model.tokenizer, 'update_tokenizer') and cfg.model.tokenizer.update_tokenizer:
         if hasattr(cfg.model.char_labels, 'update_labels') and cfg.model.char_labels.update_labels:
             raise ValueError(
                 "Both `model.tokenizer.update_tokenizer` and `model.char_labels.update_labels` cannot be passed together"
             )
         else:
-            aed_model = update_tokenizer(aed_model, cfg.model.tokenizer.dir, cfg.model.tokenizer.type)
+            aed_model = update_tokenizer(aed_model, cfg.model.tokenizer)
     elif hasattr(cfg.model, 'char_labels') and cfg.model.char_labels.update_labels:
         aed_model.change_vocabulary(new_vocabulary=cfg.model.char_labels.labels)
         logging.warning("The vocabulary of the model has been updated with provided char labels.")
@@ -136,17 +115,7 @@ def check_vocabulary(aed_model, cfg):
     return aed_model
 
 
-def update_tokenizer(aed_model, tokenizer_dir, tokenizer_type):
-    """
-    Updates the tokenizer of the model and also reinitializes the decoder if the vocabulary size
-    of the new tokenizer differs from that of the loaded model.
-    Args:
-        aed_model: EncDecMultiTaskModel instance
-        tokenizer_dir: tokenizer directory
-        tokenizer_type: tokenizer type
-    Returns:
-        aed_model: EncDecMultiTaskModel instance with updated tokenizer and decoder
-    """
+def update_tokenizer(aed_model, tokenizer_cfg):
     vocab_size = aed_model.tokenizer.vocab_size
     transf_decoder = aed_model.transf_decoder.state_dict()
     if hasattr(aed_model, 'joint'):
@@ -154,10 +123,10 @@ def update_tokenizer(aed_model, tokenizer_dir, tokenizer_type):
     else:
         joint_state = None
 
-    if tokenizer_dir is None:
-        raise ValueError("dir must be specified if update_tokenizer is True")
+    # if tokenizer_dir is None:
+        # raise ValueError("dir must be specified if update_tokenizer is True")
     logging.info("Using the tokenizer provided through config")
-    aed_model.change_vocabulary(new_tokenizer_dir=tokenizer_dir, new_tokenizer_type=tokenizer_type)
+    aed_model.change_vocabulary(new_tokenizer_dir=tokenizer_cfg, new_tokenizer_type=tokenizer_cfg.type)
     if aed_model.tokenizer.vocab_size != vocab_size:
         logging.warning(
             "The vocabulary size of the new tokenizer differs from that of the loaded model. As a result, finetuning will proceed with the new vocabulary, and the decoder will be reinitialized."
@@ -170,14 +139,6 @@ def update_tokenizer(aed_model, tokenizer_dir, tokenizer_type):
     return aed_model
 
 def setup_dataloaders(aed_model, cfg):
-    """
-    Sets up the training, validation and test dataloaders for the model.
-    Args:
-        aed_model: EncDecMultiTaskModel instance
-        cfg: config
-    Returns:
-        aed_model: EncDecMultiTaskModel instance with updated dataloaders
-    """
     cfg = model_utils.convert_model_config_to_dict_config(cfg)
     aed_model.setup_training_data(cfg.model.train_ds)
     aed_model.setup_multiple_validation_data(cfg.model.validation_ds)
