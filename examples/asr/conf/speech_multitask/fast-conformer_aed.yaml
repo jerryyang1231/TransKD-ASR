@@ -39,7 +39,8 @@ model:
   train_ds:
     use_lhotse: true
     tarred_audio_filepaths: null
-    manifest_filepath: /share/nas169/jerryyang/corpus/fleurs/en_us/manifest_canary/train_manifest.json
+    # manifest_filepath: /share/nas169/jerryyang/corpus/fleurs/en_us/manifest_canary/train_manifest.json
+    manifest_filepath: /share/nas169/jerryyang/corpus/ml-superb/manifest_canary/train_manifest.json
     sample_rate: ${model.sample_rate}
     shuffle: true
     num_workers: 8
@@ -57,7 +58,8 @@ model:
 
   validation_ds:
     use_lhotse: true
-    manifest_filepath: /share/nas169/jerryyang/corpus/fleurs/en_us/manifest_canary/validation_manifest.json
+    # manifest_filepath: /share/nas169/jerryyang/corpus/fleurs/en_us/manifest_canary/validation_manifest.json
+    manifest_filepath: /share/nas169/jerryyang/corpus/ml-superb/manifest_canary/dev_manifest.json
     sample_rate: ${model.sample_rate}
     batch_size: 8 # you may increase batch_size if your memory allows
     shuffle: false
@@ -68,7 +70,8 @@ model:
 
   test_ds:
     use_lhotse: true
-    manifest_filepath: /share/nas169/jerryyang/corpus/fleurs/en_us/manifest_canary/test_manifest.json
+    # manifest_filepath: /share/nas169/jerryyang/corpus/fleurs/en_us/manifest_canary/test_manifest.json
+    manifest_filepath: 
     sample_rate: ${model.sample_rate}
     batch_size: 8 # you may increase batch_size if your memory allows
     shuffle: false
@@ -289,5 +292,5 @@ exp_manager:
   # You may use this section to create a W&B logger
   create_wandb_logger: true
   wandb_logger_kwargs:
-    name: canary
+    name: ml-superb
     project: test

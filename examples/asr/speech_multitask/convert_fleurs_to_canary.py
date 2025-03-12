@@ -1,7 +1,12 @@
 import os
+import re
 import json
 from pathlib import Path
 import torchaudio
+import inflect
+
+# 初始化 inflect
+p = inflect.engine()
 
 # Fleurs 英文資料集路徑
 DATA_ROOT = "/share/nas169/jerryyang/corpus/fleurs/en_us"
@@ -12,6 +17,10 @@ os.makedirs(OUTPUT_DIR, exist_ok=True)
 
 # 需要處理的子集
 SUBSETS = ["train", "validation", "test"]
+
+def convert_numbers_to_words(text):
+    # 利用正則表達式找到所有獨立的數字，並轉換成文字
+    return re.sub(r'\b\d+\b', lambda m: p.number_to_words(m.group(0)), text)
 
 # 轉換 Fleurs 到 Canary 格式的函數
 def convert_fleurs_to_canary(subset):
@@ -50,6 +59,9 @@ def convert_fleurs_to_canary(subset):
                 print(f"❌ 讀取音檔 {audio_file} 發生錯誤: {e}")
                 continue
 
+            # 將數字轉成文字
+            transcript = convert_numbers_to_words(transcript)
+
             # 建立 Canary 格式的 JSON 條目
             manifest_entry = {
                 "audio_filepath": str(audio_file),
@@ -57,8 +69,9 @@ def convert_fleurs_to_canary(subset):
                 "taskname": "asr",
                 "source_lang": "en",
                 "target_lang": "en",
-                "pnc": "yes",
-                "answer": transcript,
+                "lang": "en",
+                "pnc": "no",
+                "text": transcript,
             }
 
             # 寫入 JSON 行

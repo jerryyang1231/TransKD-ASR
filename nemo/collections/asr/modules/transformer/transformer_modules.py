@@ -114,6 +114,9 @@ class TransformerEmbedding(nn.Module):
         )
         position_ids = position_ids.unsqueeze(0).repeat(input_ids.size(0), 1)
 
+        # print("input_ids :", input_ids)
+        # print("self.token_embedding shape:", self.token_embedding.shape)
+        # input("stop")
         token_embeddings = self.token_embedding(input_ids)
         position_embeddings = self.position_embedding(position_ids)
         embeddings = token_embeddings + position_embeddings

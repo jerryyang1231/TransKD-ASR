@@ -54,7 +54,6 @@ import time
 import lightning.pytorch as pl
 from omegaconf import OmegaConf
 import sys
-# print(sys.path)
 sys.path.insert(0, "/share/nas169/jerryyang/NeMo")
 from nemo.collections.asr.models import EncDecMultiTaskModel
 from nemo.core.config import hydra_runner
@@ -164,7 +163,6 @@ def main(cfg):
         )
         cfg.model.tokenizer.langs.spl_tokens.dir = spl_cfg["model_dir"]
 
-    # aed_model = EncDecMultiTaskModel(cfg=cfg.model, trainer=trainer)
     aed_model = get_base_model(trainer, cfg)
     
     # Check vocabulary type and update if needed
@@ -173,14 +171,18 @@ def main(cfg):
     # Setup Data
     aed_model = setup_dataloaders(aed_model, cfg)
 
-    # Initialize the weights of the model from another model, if provided via config
-    # aed_model.maybe_init_from_pretrained_checkpoint(cfg)
+    # # Setup Optimizer
+    # aed_model.setup_optimization(cfg.model.optim)
+
+    # # Setup SpecAug
+    # if hasattr(cfg.model, 'spec_augment') and cfg.model.spec_augment is not None:
+    #     aed_model.spec_augment = EncDecMultiTaskModel.from_config_dict(cfg.model.spec_augment)
+
     trainer.fit(aed_model)
 
     if hasattr(cfg.model, 'test_ds') and cfg.model.test_ds.manifest_filepath is not None:
         if aed_model.prepare_test(trainer):
             trainer.test(aed_model)
-
 
 if __name__ == '__main__':
     main()
