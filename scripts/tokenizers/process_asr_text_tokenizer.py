@@ -96,15 +96,17 @@
 
 # my command
 # python process_asr_text_tokenizer.py \
-#        --manifest=/share/nas169/jerryyang/corpus/fleurs/en_us/manifest_canary/train_manifest.json \
-#        --data_root=/share/nas169/jerryyang/NeMo/examples/asr/speech_multitask/nemo_experiments/english_tokenizer \
-#        --tokenizer spe \
-#        --log
-# python process_asr_text_tokenizer.py \
 #        --manifest=/share/nas169/jerryyang/corpus/ml-superb/manifest_canary/train_manifest.json \
 #        --data_root=/share/nas169/jerryyang/NeMo/examples/asr/speech_multitask/nemo_experiments/english_tokenizer \
-#        --tokenizer spe \
+#        --tokenizer=spe \
 #        --log
+# python process_asr_text_tokenizer.py \
+#         --manifest=/share/nas169/jerryyang/corpus/ml-superb/commonvoice/cmn/canary_manifest_train.json \
+#         --data_root=/share/nas169/jerryyang/NeMo/examples/asr/speech_multitask/ml-superb/cmn/mandarin_tokenizer \
+#         --vocab_size=4096 \
+#         --spe_character_coverage 0.9995 \
+#         --tokenizer spe \
+#         --log
 
 import argparse
 import json
@@ -114,7 +116,6 @@ from typing import List, Optional
 
 import tokenizers
 import sys
-# print(sys.path)
 sys.path.insert(0, "/share/nas169/jerryyang/NeMo")
 from nemo.collections.common.tokenizers.sentencepiece_tokenizer import create_spt_model
 from nemo.utils.data_utils import DataStoreObject

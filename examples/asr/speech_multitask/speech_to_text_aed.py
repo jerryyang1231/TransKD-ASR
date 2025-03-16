@@ -122,8 +122,6 @@ def update_tokenizer(aed_model, tokenizer_cfg):
     else:
         joint_state = None
 
-    # if tokenizer_dir is None:
-        # raise ValueError("dir must be specified if update_tokenizer is True")
     logging.info("Using the tokenizer provided through config")
     aed_model.change_vocabulary(new_tokenizer_dir=tokenizer_cfg, new_tokenizer_type=tokenizer_cfg.type)
     if aed_model.tokenizer.vocab_size != vocab_size:
@@ -171,8 +169,8 @@ def main(cfg):
     # Setup Data
     aed_model = setup_dataloaders(aed_model, cfg)
 
-    # # Setup Optimizer
-    # aed_model.setup_optimization(cfg.model.optim)
+    # Setup Optimizer
+    aed_model.setup_optimization(cfg.model.optim)
 
     # # Setup SpecAug
     # if hasattr(cfg.model, 'spec_augment') and cfg.model.spec_augment is not None:
