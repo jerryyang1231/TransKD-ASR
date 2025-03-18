@@ -200,7 +200,8 @@ class EncDecMultiTaskModel(ASRModel, ExportableEncDecModel, ASRBPEMixin, ASRModu
             decoding_cfg = OmegaConf.structured(MultiTaskDecodingConfig)
             with open_dict(self.cfg):
                 self.cfg.decoding = decoding_cfg
-
+        print("self.tokenizer.vocabulary :", self.tokenizer.vocabulary)
+        input("stop")
         self.decoding = MultiTaskDecoding(
             decoding_cfg=self.cfg.decoding,
             transformer_decoder=self.transf_decoder,
@@ -436,13 +437,13 @@ class EncDecMultiTaskModel(ASRModel, ExportableEncDecModel, ASRBPEMixin, ASRModu
             # Cast to OmegaConf if not already
             if not isinstance(prompt_defaults, ListConfig):
                 prompt_defaults = OmegaConf.create(prompt_defaults)
-
+        # print("self.prompt before:", self.prompt.TEMPLATE)
         prompt_cls = PromptFormatter.resolve(self.prompt_format)
         self.prompt = prompt_cls(
             tokenizer=self.tokenizer,
             defaults=OmegaConf.to_container(pd) if (pd := self.cfg.get('prompt_defaults')) is not None else None,
         )
-
+        # print("self.prompt after:", self.prompt.TEMPLATE)
         # Update config
         with open_dict(self.cfg):
             self.cfg.prompt_format = self.prompt_format

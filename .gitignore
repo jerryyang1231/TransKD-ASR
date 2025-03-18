@@ -168,6 +168,9 @@ examples/*/nemo_experiments
 examples/*/.hydra
 examples/*/wandb
 examples/*/data
+examples/ml-superb/
+examples/ml-superb_cmn/
+examples/ml-superb_eng/
 wandb
 dump.py
 
@@ -179,6 +182,8 @@ examples/neural_graphs/*.yml
 
 .hydra/
 nemo_experiments/
-nemo_experiments_old/
+ml-superb/
+ml-superb_cmn/
+ml-superb_eng/
 
 slurm*.out

@@ -96,8 +96,8 @@
 
 # my command
 # python process_asr_text_tokenizer.py \
-#        --manifest=/share/nas169/jerryyang/corpus/ml-superb/manifest_canary/train_manifest.json \
-#        --data_root=/share/nas169/jerryyang/NeMo/examples/asr/speech_multitask/nemo_experiments/english_tokenizer \
+#        --manifest=/share/nas169/jerryyang/corpus/ml-superb/commonvoice/eng/canary_manifest_train.json \
+#        --data_root=/share/nas169/jerryyang/NeMo/examples/asr/speech_multitask/ml-superb/eng/english_tokenizer \
 #        --tokenizer=spe \
 #        --log
 # python process_asr_text_tokenizer.py \

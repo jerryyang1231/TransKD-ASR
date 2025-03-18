@@ -17,9 +17,8 @@ init_from_pretrained_model: "nvidia/canary-1b"
 # Similar can be done by calling CanaryTokenizer.build_special_tokenizer(tokens, output_dir).
 # If a tokenizer exists in dir, will skip building and use already built tokenizer.
 spl_tokens:
-  # model_dir: /share/nas169/jerryyang/NeMo/examples/asr/speech_multitask/nemo_experiments/special_tokenizer
-  model_dir: /share/nas169/jerryyang/NeMo/examples/asr/speech_multitask/ml-superb/cmn/special_tokenizer
-  tokens: ["translate", "transcribe", "en", "es", "de", "fr", "zh"]
+  model_dir: /share/nas169/jerryyang/NeMo/examples/asr/speech_multitask/ml-superb/eng/special_tokenizer
+  tokens: ["translate", "transcribe", "en", "es", "de", "fr"]
   force_rebuild: True  # Set to True to build new tokenizer each time.
 
 model:
@@ -30,9 +29,7 @@ model:
 
   # Important ! Set the prompt format to the class you need
   prompt_format: "canary"  # Options supported: ["canary"]
-  prompt_defaults:  [
-                {"role": "user", "slots": {"source_lang": "zh", "target_lang": "zh", "task": "asr", "pnc": "no"}}
-            ]
+  prompt_defaults: null
 
   model_defaults:
     asr_enc_hidden: 1024
@@ -42,8 +39,7 @@ model:
   train_ds:
     use_lhotse: true
     tarred_audio_filepaths: null
-    # manifest_filepath: /share/nas169/jerryyang/corpus/fleurs/en_us/manifest_canary/train_manifest.json
-    manifest_filepath: /share/nas169/jerryyang/corpus/ml-superb/commonvoice/cmn/canary_manifest_train.json
+    manifest_filepath: /share/nas169/jerryyang/corpus/ml-superb/commonvoice/eng/canary_manifest_train.json
     sample_rate: ${model.sample_rate}
     shuffle: true
     num_workers: 8
@@ -61,8 +57,7 @@ model:
 
   validation_ds:
     use_lhotse: true
-    # manifest_filepath: /share/nas169/jerryyang/corpus/fleurs/en_us/manifest_canary/validation_manifest.json
-    manifest_filepath: /share/nas169/jerryyang/corpus/ml-superb/commonvoice/cmn/canary_manifest_dev.json
+    manifest_filepath: /share/nas169/jerryyang/corpus/ml-superb/commonvoice/eng/canary_manifest_dev.json
     sample_rate: ${model.sample_rate}
     batch_size: 8 # you may increase batch_size if your memory allows
     shuffle: false
@@ -73,8 +68,7 @@ model:
 
   test_ds:
     use_lhotse: true
-    # manifest_filepath: /share/nas169/jerryyang/corpus/fleurs/en_us/manifest_canary/test_manifest.json
-    manifest_filepath: /share/nas169/jerryyang/corpus/ml-superb/commonvoice/cmn/canary_manifest_test.json
+    manifest_filepath: /share/nas169/jerryyang/corpus/ml-superb/commonvoice/eng/canary_manifest_test.json
     sample_rate: ${model.sample_rate}
     batch_size: 8 # you may increase batch_size if your memory allows
     shuffle: false
@@ -97,11 +91,8 @@ model:
       spl_tokens: # special tokens model
         dir: null # Passed in training script
         type: bpe
-      # en: # English tokenizer (example, replace with whichever language you would like or add tokenizers to add tokenizer for additional languages) 
-      #   dir: /share/nas169/jerryyang/NeMo/examples/asr/speech_multitask/nemo_experiments/english_tokenizer/tokenizer_spe_bpe_v1024
-      #   type: bpe
-      zh: # Mandarin tokenizer
-        dir: /share/nas169/jerryyang/NeMo/examples/asr/speech_multitask/ml-superb/cmn/mandarin_tokenizer/tokenizer_spe_bpe_v4096
+      en: # English tokenizer (example, replace with whichever language you would like or add tokenizers to add tokenizer for additional languages) 
+        dir: /share/nas169/jerryyang/NeMo/examples/asr/speech_multitask/ml-superb/eng/english_tokenizer/tokenizer_spe_bpe_v1024
         type: bpe
 
     custom_tokenizer:
@@ -240,7 +231,6 @@ model:
 
   optim:
     name: adamw
-    # lr: 3e-4
     lr: 1e-5
     # optimizer arguments
     betas: [0.9, 0.98]
@@ -280,7 +270,7 @@ trainer:
   use_distributed_sampler: false  # Lhotse has its own distributed sampler
 
 exp_manager:
-  exp_dir: ml-superb_cmn
+  exp_dir: ml-superb_eng
   name: ${name}
   create_tensorboard_logger: true
   create_checkpoint_callback: true
@@ -299,5 +289,5 @@ exp_manager:
   # You may use this section to create a W&B logger
   create_wandb_logger: false
   wandb_logger_kwargs:
-    name: ml-superb/commonvoice/cmn
+    name: ml-superb/commonvoice/eng
     project: Canary
