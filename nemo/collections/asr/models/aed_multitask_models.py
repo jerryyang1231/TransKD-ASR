@@ -200,8 +200,7 @@ class EncDecMultiTaskModel(ASRModel, ExportableEncDecModel, ASRBPEMixin, ASRModu
             decoding_cfg = OmegaConf.structured(MultiTaskDecodingConfig)
             with open_dict(self.cfg):
                 self.cfg.decoding = decoding_cfg
-        print("self.tokenizer.vocabulary :", self.tokenizer.vocabulary)
-        input("stop")
+
         self.decoding = MultiTaskDecoding(
             decoding_cfg=self.cfg.decoding,
             transformer_decoder=self.transf_decoder,
@@ -224,10 +223,10 @@ class EncDecMultiTaskModel(ASRModel, ExportableEncDecModel, ASRBPEMixin, ASRModu
 
         # TODO: PytorchMetrics lets you join two metrics together to save compute.
         # But need to make wer and bleu have same outputs first
-        self.wer = WER(self.decoding, log_prediction=self.cfg.get("log_prediction"))
-        self.bleu = BLEU(
-            self.decoding, tokenize=self.cfg.get('bleu_tokenizer', "13a"), log_prediction=False
-        )  # Wer is handling logging
+        # self.wer = WER(self.decoding, log_prediction=self.cfg.get("log_prediction"))
+        # self.bleu = BLEU(
+        #     self.decoding, tokenize=self.cfg.get('bleu_tokenizer', "13a"), log_prediction=False
+        # )  # Wer is handling logging
 
         # Setup encoder adapters (from ASRAdapterModelMixin)
         self.setup_adapters()
@@ -382,6 +381,15 @@ class EncDecMultiTaskModel(ASRModel, ExportableEncDecModel, ASRBPEMixin, ASRModu
             tokenizer=self.tokenizer,
         )
 
+        if "zh" in self.cfg.tokenizer.langs:
+            self.cer = WER(self.decoding, use_cer=True, log_prediction=self.cfg.get("log_prediction"))
+        else:
+            self.wer = WER(self.decoding, use_cer=False, log_prediction=self.cfg.get("log_prediction"))
+
+        self.bleu = BLEU(
+            self.decoding, tokenize=self.cfg.get('bleu_tokenizer', "13a"), log_prediction=False
+        )  # Wer is handling logging
+        
         with open_dict(self.cfg.decoding):
             self.cfg.decoding = decoding_cfg
 
@@ -757,17 +765,34 @@ class EncDecMultiTaskModel(ASRModel, ExportableEncDecModel, ASRBPEMixin, ASRModu
         self.val_loss(loss=transf_loss, num_measurements=num_measurements)
         output_dict = {f'{eval_mode}_loss': transf_loss}
 
-        self.wer.update(
-            predictions=enc_states,
-            predictions_lengths=encoded_len,
-            targets=batch.transcript,
-            targets_lengths=batch.transcript_lens,
-            predictions_mask=enc_mask,
-            input_ids=batch.prompt,
-        )
-        wer, wer_num, wer_denom = self.wer.compute()
-        output_dict.update({"val_wer": wer, "val_wer_num": wer_num, "val_wer_denom": wer_denom})
-        self.wer.reset()
+        if "zh" in self.cfg.tokenizer.langs:
+            self.cer.update(
+                predictions=enc_states,
+                predictions_lengths=encoded_len,
+                targets=batch.transcript,
+                targets_lengths=batch.transcript_lens,
+                predictions_mask=enc_mask,
+                input_ids=batch.prompt,
+            )
+            cer, cer_num, cer_denom = self.cer.compute()
+            output_dict.update({f"{eval_mode}_cer": cer, f"{eval_mode}_cer_num": cer_num, f"{eval_mode}_cer_denom": cer_denom})
+            self.cer.reset()
+        else:
+            self.wer.update(
+                predictions=enc_states,
+                predictions_lengths=encoded_len,
+                targets=batch.transcript,
+                targets_lengths=batch.transcript_lens,
+                predictions_mask=enc_mask,
+                input_ids=batch.prompt,
+            )
+            wer, wer_num, wer_denom = self.wer.compute()
+            output_dict.update({f"{eval_mode}_wer": wer, f"{eval_mode}_wer_num": wer_num, f"{eval_mode}_wer_denom": wer_denom})
+            self.wer.reset()
+    
+        # wer, wer_num, wer_denom = self.wer.compute()
+        # output_dict.update({f"{eval_mode}_wer": wer, f"{eval_mode}_wer_num": wer_num, f"{eval_mode}_wer_denom": wer_denom})
+        # self.wer.reset()
 
         self.bleu.update(
             predictions=enc_states,

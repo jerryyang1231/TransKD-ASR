@@ -61,6 +61,14 @@ python speech_to_text_eval.py \
     only_score_manifest=True
 
 """
+# my command
+# python speech_to_text_eval.py \
+#     pretrained_name="nvidia/canary-1b" \
+#     dataset_manifest=/share/nas169/jerryyang/corpus/ml-superb/commonvoice/eng/canary_manifest_test.json \
+#     output_filename=eval_canary \
+#     batch_size=32 \
+#     amp=True \
+#     use_cer=True
 
 import json
 import os

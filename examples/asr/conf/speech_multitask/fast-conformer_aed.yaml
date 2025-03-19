@@ -17,7 +17,6 @@ init_from_pretrained_model: "nvidia/canary-1b"
 # Similar can be done by calling CanaryTokenizer.build_special_tokenizer(tokens, output_dir).
 # If a tokenizer exists in dir, will skip building and use already built tokenizer.
 spl_tokens:
-  # model_dir: /share/nas169/jerryyang/NeMo/examples/asr/speech_multitask/nemo_experiments/special_tokenizer
   model_dir: /share/nas169/jerryyang/NeMo/examples/asr/speech_multitask/ml-superb/cmn/special_tokenizer
   tokens: ["translate", "transcribe", "en", "es", "de", "fr", "zh"]
   force_rebuild: True  # Set to True to build new tokenizer each time.
@@ -42,7 +41,6 @@ model:
   train_ds:
     use_lhotse: true
     tarred_audio_filepaths: null
-    # manifest_filepath: /share/nas169/jerryyang/corpus/fleurs/en_us/manifest_canary/train_manifest.json
     manifest_filepath: /share/nas169/jerryyang/corpus/ml-superb/commonvoice/cmn/canary_manifest_train.json
     sample_rate: ${model.sample_rate}
     shuffle: true
@@ -61,7 +59,6 @@ model:
 
   validation_ds:
     use_lhotse: true
-    # manifest_filepath: /share/nas169/jerryyang/corpus/fleurs/en_us/manifest_canary/validation_manifest.json
     manifest_filepath: /share/nas169/jerryyang/corpus/ml-superb/commonvoice/cmn/canary_manifest_dev.json
     sample_rate: ${model.sample_rate}
     batch_size: 8 # you may increase batch_size if your memory allows
@@ -73,7 +70,6 @@ model:
 
   test_ds:
     use_lhotse: true
-    # manifest_filepath: /share/nas169/jerryyang/corpus/fleurs/en_us/manifest_canary/test_manifest.json
     manifest_filepath: /share/nas169/jerryyang/corpus/ml-superb/commonvoice/cmn/canary_manifest_test.json
     sample_rate: ${model.sample_rate}
     batch_size: 8 # you may increase batch_size if your memory allows

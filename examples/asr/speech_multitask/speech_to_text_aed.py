@@ -53,6 +53,7 @@ python speech_to_text_aed.py \
 
 # my command
 # python speech_to_text_aed.py --config-name=ml-superb_eng
+# python speech_to_text_aed.py --config-name=ml-superb_cmn
 
 import time
 import lightning.pytorch as pl
@@ -109,11 +110,11 @@ def check_vocabulary(aed_model, cfg):
             )
         else:
             aed_model = update_tokenizer(aed_model, cfg.model.tokenizer)
-    # elif hasattr(cfg.model, 'char_labels') and cfg.model.char_labels.update_labels:
-    #     aed_model.change_vocabulary(new_vocabulary=cfg.model.char_labels.labels)
-    #     logging.warning("The vocabulary of the model has been updated with provided char labels.")
-    # else:
-    #     logging.info("Reusing the vocabulary from the pre-trained model.")
+    elif hasattr(cfg.model, 'char_labels') and cfg.model.char_labels.update_labels:
+        aed_model.change_vocabulary(new_vocabulary=cfg.model.char_labels.labels)
+        logging.warning("The vocabulary of the model has been updated with provided char labels.")
+    else:
+        logging.info("Reusing the vocabulary from the pre-trained model.")
 
     return aed_model
 
@@ -122,13 +123,11 @@ def update_tokenizer(aed_model, tokenizer_cfg):
     vocab_size = aed_model.tokenizer.vocab_size
     transf_decoder = aed_model.transf_decoder.state_dict()
     if hasattr(aed_model, 'joint'):
-        print("1")
         joint_state = aed_model.joint.state_dict()
     else:
-        print("0")
         joint_state = None
-    input("wait a minute")
     logging.info("Using the tokenizer provided through config")
+    
     aed_model.change_vocabulary(new_tokenizer_dir=tokenizer_cfg, new_tokenizer_type=tokenizer_cfg.type)
     if aed_model.tokenizer.vocab_size != vocab_size:
         logging.warning(
@@ -172,7 +171,8 @@ def main(cfg):
     # Check vocabulary type and update if needed
     aed_model = check_vocabulary(aed_model, cfg)
     
-    # aed_model.change_prompt()
+    # Avoid key error
+    aed_model.change_prompt()
 
     # Setup Data
     aed_model = setup_dataloaders(aed_model, cfg)
@@ -184,7 +184,7 @@ def main(cfg):
     # if hasattr(cfg.model, 'spec_augment') and cfg.model.spec_augment is not None:
     #     aed_model.spec_augment = EncDecMultiTaskModel.from_config_dict(cfg.model.spec_augment)
 
-    trainer.fit(aed_model)
+    # trainer.fit(aed_model)
 
     if hasattr(cfg.model, 'test_ds') and cfg.model.test_ds.manifest_filepath is not None:
         if aed_model.prepare_test(trainer):
