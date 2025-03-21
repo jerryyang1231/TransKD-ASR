@@ -7,17 +7,18 @@
 # One extra (linear projection) layer is added between FastConformer encoder and Transformer decoder if they have different hidden sizes
 # It is recommended to initialize FastConformer with ASR/SSL pre-trained encoder for better accuracy and faster convergence
 
-name: "FastConformer-Transformer-MultiTask"
+name: "canary-180m-flash-finetune"
 
 # Note: for larger models (1B+ params) initializing from a pretrained encoder
 #  may help (or even be required to) stabilize the training.
-init_from_pretrained_model: "nvidia/canary-1b"
+# init_from_pretrained_model: "nvidia/canary-1b"
+init_from_pretrained_model: "nvidia/canary-180m-flash"
 
 # If using example training script, below will be used to instantiate spl_tokens tokenizer.
 # Similar can be done by calling CanaryTokenizer.build_special_tokenizer(tokens, output_dir).
 # If a tokenizer exists in dir, will skip building and use already built tokenizer.
 spl_tokens:
-  model_dir: /share/nas169/jerryyang/NeMo/examples/asr/speech_multitask/ml-superb/eng/special_tokenizer
+  model_dir: null
   tokens: ["translate", "transcribe", "en", "es", "de", "fr"]
   force_rebuild: True  # Set to True to build new tokenizer each time.
 
@@ -28,12 +29,12 @@ model:
   log_prediction: true # enables logging sample predictions in the output during training
 
   # Important ! Set the prompt format to the class you need
-  prompt_format: "canary"  # Options supported: ["canary"]
-  prompt_defaults: null
+  prompt_format: "canary2"  # Options supported: ["canary", "canary2"]
+  prompt_defaults: [{'role': 'user', 'slots': {'decodercontext': '', 'source_lang': '<|en|>', 'target_lang': '<|en|>', 'emotion': '<|emo:undefined|>', 'pnc': '<|pnc|>', 'itn': '<|noitn|>', 'diarize': '<|nodiarize|>', 'timestamp': '<|notimestamp|>'}}, {'role': 'user_partial', 'slots': {'decodercontext': ''}}]
 
   model_defaults:
-    asr_enc_hidden: 1024
-    lm_enc_hidden: 512
+    asr_enc_hidden: 512
+    lm_enc_hidden: 1024
     lm_dec_hidden: 1024
 
   train_ds:
@@ -92,7 +93,7 @@ model:
         dir: null # Passed in training script
         type: bpe
       en: # English tokenizer (example, replace with whichever language you would like or add tokenizers to add tokenizer for additional languages) 
-        dir: /share/nas169/jerryyang/NeMo/examples/asr/speech_multitask/ml-superb/eng/english_tokenizer/tokenizer_spe_bpe_v1024
+        dir: null
         type: bpe
 
     custom_tokenizer:
@@ -289,5 +290,6 @@ exp_manager:
   # You may use this section to create a W&B logger
   create_wandb_logger: false
   wandb_logger_kwargs:
-    name: ml-superb/commonvoice/eng
+    # name: ml-superb_eng
+    name: test
     project: Canary

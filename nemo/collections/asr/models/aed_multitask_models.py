@@ -223,10 +223,10 @@ class EncDecMultiTaskModel(ASRModel, ExportableEncDecModel, ASRBPEMixin, ASRModu
 
         # TODO: PytorchMetrics lets you join two metrics together to save compute.
         # But need to make wer and bleu have same outputs first
-        # self.wer = WER(self.decoding, log_prediction=self.cfg.get("log_prediction"))
-        # self.bleu = BLEU(
-        #     self.decoding, tokenize=self.cfg.get('bleu_tokenizer', "13a"), log_prediction=False
-        # )  # Wer is handling logging
+        self.wer = WER(self.decoding, log_prediction=self.cfg.get("log_prediction"))
+        self.bleu = BLEU(
+            self.decoding, tokenize=self.cfg.get('bleu_tokenizer', "13a"), log_prediction=False
+        )  # Wer is handling logging
 
         # Setup encoder adapters (from ASRAdapterModelMixin)
         self.setup_adapters()
@@ -381,14 +381,14 @@ class EncDecMultiTaskModel(ASRModel, ExportableEncDecModel, ASRBPEMixin, ASRModu
             tokenizer=self.tokenizer,
         )
 
-        if "zh" in self.cfg.tokenizer.langs:
-            self.cer = WER(self.decoding, use_cer=True, log_prediction=self.cfg.get("log_prediction"))
-        else:
-            self.wer = WER(self.decoding, use_cer=False, log_prediction=self.cfg.get("log_prediction"))
-
-        self.bleu = BLEU(
-            self.decoding, tokenize=self.cfg.get('bleu_tokenizer', "13a"), log_prediction=False
-        )  # Wer is handling logging
+        # if "zh" in self.cfg.tokenizer.langs:
+        #     self.cer = WER(self.decoding, use_cer=True, log_prediction=self.cfg.get("log_prediction"))
+        # else:
+        #     self.wer = WER(self.decoding, use_cer=False, log_prediction=self.cfg.get("log_prediction"))
+        # self.wer = WER(self.decoding, log_prediction=self.cfg.get("log_prediction"))
+        # self.bleu = BLEU(
+        #     self.decoding, tokenize=self.cfg.get('bleu_tokenizer', "13a"), log_prediction=False
+        # )  # Wer is handling logging
         
         with open_dict(self.cfg.decoding):
             self.cfg.decoding = decoding_cfg
@@ -445,13 +445,13 @@ class EncDecMultiTaskModel(ASRModel, ExportableEncDecModel, ASRBPEMixin, ASRModu
             # Cast to OmegaConf if not already
             if not isinstance(prompt_defaults, ListConfig):
                 prompt_defaults = OmegaConf.create(prompt_defaults)
-        # print("self.prompt before:", self.prompt.TEMPLATE)
+
         prompt_cls = PromptFormatter.resolve(self.prompt_format)
         self.prompt = prompt_cls(
             tokenizer=self.tokenizer,
             defaults=OmegaConf.to_container(pd) if (pd := self.cfg.get('prompt_defaults')) is not None else None,
         )
-        # print("self.prompt after:", self.prompt.TEMPLATE)
+
         # Update config
         with open_dict(self.cfg):
             self.cfg.prompt_format = self.prompt_format
@@ -765,34 +765,42 @@ class EncDecMultiTaskModel(ASRModel, ExportableEncDecModel, ASRBPEMixin, ASRModu
         self.val_loss(loss=transf_loss, num_measurements=num_measurements)
         output_dict = {f'{eval_mode}_loss': transf_loss}
 
-        if "zh" in self.cfg.tokenizer.langs:
-            self.cer.update(
-                predictions=enc_states,
-                predictions_lengths=encoded_len,
-                targets=batch.transcript,
-                targets_lengths=batch.transcript_lens,
-                predictions_mask=enc_mask,
-                input_ids=batch.prompt,
-            )
-            cer, cer_num, cer_denom = self.cer.compute()
-            output_dict.update({f"{eval_mode}_cer": cer, f"{eval_mode}_cer_num": cer_num, f"{eval_mode}_cer_denom": cer_denom})
-            self.cer.reset()
-        else:
-            self.wer.update(
-                predictions=enc_states,
-                predictions_lengths=encoded_len,
-                targets=batch.transcript,
-                targets_lengths=batch.transcript_lens,
-                predictions_mask=enc_mask,
-                input_ids=batch.prompt,
-            )
-            wer, wer_num, wer_denom = self.wer.compute()
-            output_dict.update({f"{eval_mode}_wer": wer, f"{eval_mode}_wer_num": wer_num, f"{eval_mode}_wer_denom": wer_denom})
-            self.wer.reset()
-    
-        # wer, wer_num, wer_denom = self.wer.compute()
-        # output_dict.update({f"{eval_mode}_wer": wer, f"{eval_mode}_wer_num": wer_num, f"{eval_mode}_wer_denom": wer_denom})
-        # self.wer.reset()
+        # if "zh" in self.cfg.tokenizer.langs:
+        #     self.cer.update(
+        #         predictions=enc_states,
+        #         predictions_lengths=encoded_len,
+        #         targets=batch.transcript,
+        #         targets_lengths=batch.transcript_lens,
+        #         predictions_mask=enc_mask,
+        #         input_ids=batch.prompt,
+        #     )
+        #     cer, cer_num, cer_denom = self.cer.compute()
+        #     output_dict.update({f"{eval_mode}_cer": cer, f"{eval_mode}_cer_num": cer_num, f"{eval_mode}_cer_denom": cer_denom})
+        #     self.cer.reset()
+        # else:
+        #     self.wer.update(
+        #         predictions=enc_states,
+        #         predictions_lengths=encoded_len,
+        #         targets=batch.transcript,
+        #         targets_lengths=batch.transcript_lens,
+        #         predictions_mask=enc_mask,
+        #         input_ids=batch.prompt,
+        #     )
+        #     wer, wer_num, wer_denom = self.wer.compute()
+        #     output_dict.update({f"{eval_mode}_wer": wer, f"{eval_mode}_wer_num": wer_num, f"{eval_mode}_wer_denom": wer_denom})
+        #     self.wer.reset()
+        self.wer.update(
+            predictions=enc_states,
+            predictions_lengths=encoded_len,
+            targets=batch.transcript,
+            targets_lengths=batch.transcript_lens,
+            predictions_mask=enc_mask,
+            input_ids=batch.prompt,
+        )
+        
+        wer, wer_num, wer_denom = self.wer.compute()
+        output_dict.update({"val_wer": wer, "val_wer_num": wer_num, "val_wer_denom": wer_denom})
+        self.wer.reset()
 
         self.bleu.update(
             predictions=enc_states,
@@ -810,6 +818,7 @@ class EncDecMultiTaskModel(ASRModel, ExportableEncDecModel, ASRBPEMixin, ASRModu
 
     def validation_step(self, batch, batch_idx, dataloader_idx=0):
         metrics = self.validation_pass(batch, batch_idx, dataloader_idx, eval_mode="val")
+        # print("val output :", metrics)
         if type(self.trainer.val_dataloaders) == list and len(self.trainer.val_dataloaders) > 1:
             self.validation_step_outputs[dataloader_idx].append(metrics)
         else:
@@ -818,6 +827,7 @@ class EncDecMultiTaskModel(ASRModel, ExportableEncDecModel, ASRBPEMixin, ASRModu
 
     def test_step(self, batch, batch_idx, dataloader_idx=0):
         metrics = self.validation_pass(batch, batch_idx, dataloader_idx, eval_mode="test")
+        # print("test output :", metrics)
         if type(self.trainer.val_dataloaders) == list and len(self.trainer.val_dataloaders) > 1:
             self.validation_step_outputs[dataloader_idx].append(metrics)
         else:

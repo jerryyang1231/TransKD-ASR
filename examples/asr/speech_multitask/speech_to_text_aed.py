@@ -12,45 +12,6 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""
-# Training the model
-```sh
-python speech_to_text_aed.py \
-    # (Optional: --config-path=<path to dir of configs> --config-name=<name of config without .yaml>) \
-    model.train_ds.tarred_audio_filepaths=<path to tar files with audio> \
-    model.train_ds.manifest_filepath=<path to audio data manifest> \
-    model.train_ds.batch_duration=360 \
-    model.train_ds.num_buckets=30 \
-    model.train_ds.bucket_duration_bins=<optional list of precomputed float bins for bucket durations, speeds up init> \
-    model.validation_ds.manifest_filepath=<path to validation manifest> \
-    model.test_ds.manifest_filepath=<path to test manifest> \
-    model.model_defaults.asr_enc_hidden=1024 \
-    model.model_defaults.lm_enc_hidden=512 \
-    model.model_defaults.lm_dec_hidden=1024 \
-    model.tokenizer.langs.spl_tokens.dir=<path to the directory of prompt special tokens tokenizer> \
-    model.tokenizer.langs.spl_tokens.type=bpe \
-    model.tokenizer.langs.en.dir=<path to the directory of en language tokenizer (add new langs the same way)> \
-    model.tokenizer.langs.en.type=bpe \
-    model.prompt_format="canary" \
-    trainer.devices=-1 \
-    trainer.accelerator="ddp" \
-    trainer.max_steps=100000 \
-    +trainer.limit_train_batches=20000 \
-    trainer.val_check_interval=5000 \
-    +trainer.use_distributed_sampler=false \
-    model.optim.name="adamw" \
-    model.optim.lr=0.001 \
-    model.optim.betas=[0.9,0.999] \
-    model.optim.weight_decay=0.0001 \
-    model.optim.sched.warmup_steps=2000 \
-    exp_manager.create_wandb_logger=True \
-    exp_manager.wandb_logger_kwargs.name="<Name of experiment>" \
-    exp_manager.wandb_logger_kwargs.project="<Name of project>"
-```
-
-
-"""
-
 # my command
 # python speech_to_text_aed.py --config-name=ml-superb_eng
 # python speech_to_text_aed.py --config-name=ml-superb_cmn
@@ -58,6 +19,7 @@ python speech_to_text_aed.py \
 import time
 import lightning.pytorch as pl
 from omegaconf import OmegaConf
+import os
 import sys
 sys.path.insert(0, "/share/nas169/jerryyang/NeMo")
 from nemo.collections.asr.models import EncDecMultiTaskModel
@@ -157,26 +119,28 @@ def main(cfg):
     exp_manager(trainer, cfg.get("exp_manager", None))
 
     # Check for spl tokens to create spl_tokenizer.
-    if cfg.get("spl_tokens"):
-        logging.info("Detected spl_tokens config. Building tokenizer.")
-        spl_cfg = cfg["spl_tokens"]
-        spl_tokenizer_cls = model_utils.import_class_by_path(cfg.model.tokenizer.custom_tokenizer["_target_"])
-        spl_tokenizer_cls.build_special_tokenizer(
-            spl_cfg["tokens"], spl_cfg["model_dir"], force_rebuild=spl_cfg["force_rebuild"]
-        )
-        cfg.model.tokenizer.langs.spl_tokens.dir = spl_cfg["model_dir"]
+    # if cfg.get("spl_tokens"):
+    #     logging.info("Detected spl_tokens config. Building tokenizer.")
+    #     spl_cfg = cfg["spl_tokens"]
+    #     spl_tokenizer_cls = model_utils.import_class_by_path(cfg.model.tokenizer.custom_tokenizer["_target_"])
+    #     spl_tokenizer_cls.build_special_tokenizer(
+    #         spl_cfg["tokens"], spl_cfg["model_dir"], force_rebuild=spl_cfg["force_rebuild"]
+    #     )
+    #     cfg.model.tokenizer.langs.spl_tokens.dir = spl_cfg["model_dir"]
 
     aed_model = get_base_model(trainer, cfg)
-    
+
+    aed_model.save_tokenizers('./canary_flash_tokenizers/')
+
     # Check vocabulary type and update if needed
-    aed_model = check_vocabulary(aed_model, cfg)
+    # aed_model = check_vocabulary(aed_model, cfg)
     
     # Avoid key error
-    aed_model.change_prompt()
+    # aed_model.change_prompt()
 
     # Setup Data
     aed_model = setup_dataloaders(aed_model, cfg)
-
+    
     # Setup Optimizer
     aed_model.setup_optimization(cfg.model.optim)
 
@@ -185,6 +149,7 @@ def main(cfg):
     #     aed_model.spec_augment = EncDecMultiTaskModel.from_config_dict(cfg.model.spec_augment)
 
     # trainer.fit(aed_model)
+    # trainer.validate(aed_model)
 
     if hasattr(cfg.model, 'test_ds') and cfg.model.test_ds.manifest_filepath is not None:
         if aed_model.prepare_test(trainer):

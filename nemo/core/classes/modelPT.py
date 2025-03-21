@@ -978,7 +978,8 @@ class ModelPT(LightningModule, Model):
         # Case where we provide exactly 1 data loader
         if isinstance(self.validation_step_outputs[0], dict):
             output_dict = self.multi_validation_epoch_end(self.validation_step_outputs, dataloader_idx=0)
-
+            # print("val output_dict :", output_dict)
+            # input("wait")
             if output_dict is not None and 'log' in output_dict:
                 self.log_dict(output_dict.pop('log'), on_epoch=True, sync_dist=sync_metrics)
 
@@ -1067,6 +1068,8 @@ class ModelPT(LightningModule, Model):
             A dictionary containing the union of all items from individual data_loaders,
             along with merged logs from all data loaders.
         """
+        # print("self.test_step_outputs :", self.test_step_outputs)
+        # input("wait")
         # Case where we dont provide data loaders
         if self.test_step_outputs is not None and len(self.test_step_outputs) == 0:
             return {}
@@ -1074,7 +1077,7 @@ class ModelPT(LightningModule, Model):
         # Case where we provide exactly 1 data loader
         if isinstance(self.test_step_outputs[0], dict):
             output_dict = self.multi_test_epoch_end(self.test_step_outputs, dataloader_idx=0)
-
+            
             if output_dict is not None and 'log' in output_dict:
                 self.log_dict(output_dict.pop('log'), on_epoch=True)
 

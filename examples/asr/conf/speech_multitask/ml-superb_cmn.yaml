@@ -290,7 +290,8 @@ exp_manager:
   resume_ignore_no_checkpoint: false
 
   # You may use this section to create a W&B logger
-  create_wandb_logger: true
+  create_wandb_logger: false
   wandb_logger_kwargs:
-    name: ml-super_cmn
+    # name: ml-super_cmn
+    name: test
     project: Canary
