@@ -107,6 +107,13 @@
 #         --spe_character_coverage 0.9995 \
 #         --tokenizer spe \
 #         --log
+# python process_asr_text_tokenizer.py \
+#         --manifest=/share/nas169/jerryyang/corpus/matbn/revised_train.json \
+#         --data_root=/share/nas169/jerryyang/NeMo/examples/asr/speech_multitask/matbn/chinese_tokenizer \
+#         --vocab_size=4096 \
+#         --spe_character_coverage 0.9995 \
+#         --tokenizer spe \
+#         --log
 
 import argparse
 import json

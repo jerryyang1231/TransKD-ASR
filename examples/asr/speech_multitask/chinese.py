@@ -13,8 +13,9 @@
 # limitations under the License.
 
 # my command
-# python speech_to_text_aed.py --config-name=ml-superb_eng
-# python speech_to_text_aed.py --config-name=ml-superb_cmn
+# python chinese.py --config-name=ml-superb_cmn
+# python chinese.py --config-name=matbn
+# python chinese.py --config-name=matbn_2
 
 import time
 import lightning.pytorch as pl
@@ -89,8 +90,7 @@ def update_tokenizer(aed_model, tokenizer_cfg):
     else:
         joint_state = None
     logging.info("Using the tokenizer provided through config")
-
-    # 如果有做change_vocabulary，暫時寫死都算cer
+    
     aed_model.change_vocabulary(new_tokenizer_dir=tokenizer_cfg, new_tokenizer_type=tokenizer_cfg.type)
     if aed_model.tokenizer.vocab_size != vocab_size:
         logging.warning(
@@ -120,14 +120,14 @@ def main(cfg):
     exp_manager(trainer, cfg.get("exp_manager", None))
 
     # Check for spl tokens to create spl_tokenizer.
-    # if cfg.get("spl_tokens"):
-    #     logging.info("Detected spl_tokens config. Building tokenizer.")
-    #     spl_cfg = cfg["spl_tokens"]
-    #     spl_tokenizer_cls = model_utils.import_class_by_path(cfg.model.tokenizer.custom_tokenizer["_target_"])
-    #     spl_tokenizer_cls.build_special_tokenizer(
-    #         spl_cfg["tokens"], spl_cfg["model_dir"], force_rebuild=spl_cfg["force_rebuild"]
-    #     )
-    #     cfg.model.tokenizer.langs.spl_tokens.dir = spl_cfg["model_dir"]
+    if cfg.get("spl_tokens"):
+        logging.info("Detected spl_tokens config. Building tokenizer.")
+        spl_cfg = cfg["spl_tokens"]
+        spl_tokenizer_cls = model_utils.import_class_by_path(cfg.model.tokenizer.custom_tokenizer["_target_"])
+        spl_tokenizer_cls.build_special_tokenizer(
+            spl_cfg["tokens"], spl_cfg["model_dir"], force_rebuild=spl_cfg["force_rebuild"]
+        )
+        cfg.model.tokenizer.langs.spl_tokens.dir = spl_cfg["model_dir"]
 
     # aed_model = EncDecMultiTaskModel(cfg=cfg.model, trainer=trainer)
     
@@ -135,12 +135,13 @@ def main(cfg):
     # aed_model.maybe_init_from_pretrained_checkpoint(cfg)
     
     aed_model = get_base_model(trainer, cfg)
+    # vocab = aed_model.tokenizer.vocabulary
 
     # Check vocabulary type and update if needed
-    # aed_model = check_vocabulary(aed_model, cfg)
-    
+    aed_model = check_vocabulary(aed_model, cfg)
+
     # Avoid key error
-    # aed_model.change_prompt()
+    aed_model.change_prompt()
 
     # Setup Data
     aed_model = setup_dataloaders(aed_model, cfg)
@@ -149,11 +150,10 @@ def main(cfg):
     aed_model.setup_optimization(cfg.model.optim)
 
     # Setup SpecAug
-    # if hasattr(cfg.model, 'spec_augment') and cfg.model.spec_augment is not None:
-        # aed_model.spec_augment = EncDecMultiTaskModel.from_config_dict(cfg.model.spec_augment)
+    if hasattr(cfg.model, 'spec_augment') and cfg.model.spec_augment is not None:
+        aed_model.spec_augment = EncDecMultiTaskModel.from_config_dict(cfg.model.spec_augment)
 
     trainer.fit(aed_model)
-    # trainer.validate(aed_model)
 
     if hasattr(cfg.model, 'test_ds') and cfg.model.test_ds.manifest_filepath is not None:
         if aed_model.prepare_test(trainer):

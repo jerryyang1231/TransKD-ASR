@@ -168,9 +168,6 @@ examples/*/nemo_experiments
 examples/*/.hydra
 examples/*/wandb
 examples/*/data
-examples/ml-superb/
-examples/ml-superb_cmn/
-examples/ml-superb_eng/
 wandb
 dump.py
 
@@ -185,5 +182,7 @@ nemo_experiments/
 ml-superb/
 ml-superb_cmn/
 ml-superb_eng/
+matbn/
+matbn_2
 
 slurm*.out

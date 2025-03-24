@@ -7,7 +7,8 @@
 # One extra (linear projection) layer is added between FastConformer encoder and Transformer decoder if they have different hidden sizes
 # It is recommended to initialize FastConformer with ASR/SSL pre-trained encoder for better accuracy and faster convergence
 
-name: canary-180m-flash-finetune-cmn
+# name: canary-180m-flash-finetune-matbn
+name: canary-1b-finetune-matbn
 
 # Note: for larger models (1B+ params) initializing from a pretrained encoder
 #  may help (or even be required to) stabilize the training.
@@ -18,7 +19,7 @@ init_from_pretrained_model: "nvidia/canary-1b"
 # Similar can be done by calling CanaryTokenizer.build_special_tokenizer(tokens, output_dir).
 # If a tokenizer exists in dir, will skip building and use already built tokenizer.
 spl_tokens:
-  model_dir: /share/nas169/jerryyang/NeMo/examples/asr/speech_multitask/ml-superb/cmn/special_tokenizer
+  model_dir: /share/nas169/jerryyang/NeMo/examples/asr/speech_multitask/matbn/special_tokenizer
   tokens: ["translate", "transcribe", "en", "es", "de", "fr", "zh"]
   force_rebuild: false  # Set to True to build new tokenizer each time.
 
@@ -44,7 +45,7 @@ model:
   train_ds:
     use_lhotse: true
     tarred_audio_filepaths: null
-    manifest_filepath: /share/nas169/jerryyang/corpus/ml-superb/commonvoice/cmn/canary_manifest_train.json
+    manifest_filepath: /share/nas169/jerryyang/corpus/matbn/revised_train.json
     sample_rate: ${model.sample_rate}
     shuffle: true
     num_workers: 8
@@ -54,7 +55,7 @@ model:
     # https://github.com/NVIDIA/NeMo/blob/main/nemo/collections/common/data/lhotse/dataloader.py#L36
     batch_size: null
     # batch_duration: 360
-    batch_duration: 90
+    batch_duration: 45
     quadratic_duration: 15
     use_bucketing: true
     num_buckets: 20
@@ -65,7 +66,7 @@ model:
 
   validation_ds:
     use_lhotse: true
-    manifest_filepath: /share/nas169/jerryyang/corpus/ml-superb/commonvoice/cmn/canary_manifest_dev.json
+    manifest_filepath: /share/nas169/jerryyang/corpus/matbn/revised_dev.json
     sample_rate: ${model.sample_rate}
     batch_size: 8 # you may increase batch_size if your memory allows
     shuffle: false
@@ -78,8 +79,7 @@ model:
 
   test_ds:
     use_lhotse: true
-    manifest_filepath: /share/nas169/jerryyang/corpus/ml-superb/commonvoice/cmn/canary_manifest_test.json
-    # manifest_filepath: /share/nas169/jerryyang/corpus/matbn/revised_test.json
+    manifest_filepath: /share/nas169/jerryyang/corpus/matbn/revised_test.json
     sample_rate: ${model.sample_rate}
     batch_size: 8 # you may increase batch_size if your memory allows
     shuffle: false
@@ -103,7 +103,7 @@ model:
         dir: null # Passed in training script
         type: bpe
       zh: # Mandarin tokenizer
-        dir: /share/nas169/jerryyang/NeMo/examples/asr/speech_multitask/ml-superb/cmn/mandarin_tokenizer/tokenizer_spe_bpe_v4096
+        dir: /share/nas169/jerryyang/NeMo/examples/asr/speech_multitask/matbn/chinese_tokenizer/tokenizer_spe_bpe_v4096
         type: bpe
 
     custom_tokenizer:
@@ -290,7 +290,7 @@ trainer:
   use_distributed_sampler: false  # Lhotse has its own distributed sampler
 
 exp_manager:
-  exp_dir: ml-superb_cmn
+  exp_dir: matbn
   name: ${name}
   create_tensorboard_logger: true
   create_checkpoint_callback: true
@@ -309,6 +309,6 @@ exp_manager:
   # You may use this section to create a W&B logger
   create_wandb_logger: true
   wandb_logger_kwargs:
-    name: ml-superb_cmn
+    name: matbn
     # name: test
     project: Canary

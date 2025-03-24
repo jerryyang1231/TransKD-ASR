@@ -7,18 +7,18 @@
 # One extra (linear projection) layer is added between FastConformer encoder and Transformer decoder if they have different hidden sizes
 # It is recommended to initialize FastConformer with ASR/SSL pre-trained encoder for better accuracy and faster convergence
 
-name: canary-180m-flash-finetune-cmn
+name: canary-180m-flash-finetune-matbn
 
 # Note: for larger models (1B+ params) initializing from a pretrained encoder
 #  may help (or even be required to) stabilize the training.
-init_from_pretrained_model: "nvidia/canary-1b"
-# init_from_pretrained_model: "nvidia/canary-180m-flash"
+# init_from_pretrained_model: "nvidia/canary-1b"
+init_from_pretrained_model: "nvidia/canary-180m-flash"
 
 # If using example training script, below will be used to instantiate spl_tokens tokenizer.
 # Similar can be done by calling CanaryTokenizer.build_special_tokenizer(tokens, output_dir).
 # If a tokenizer exists in dir, will skip building and use already built tokenizer.
 spl_tokens:
-  model_dir: /share/nas169/jerryyang/NeMo/examples/asr/speech_multitask/ml-superb/cmn/special_tokenizer
+  model_dir: /share/nas169/jerryyang/NeMo/examples/asr/speech_multitask/matbn_2/special_tokenizer
   tokens: ["translate", "transcribe", "en", "es", "de", "fr", "zh"]
   force_rebuild: false  # Set to True to build new tokenizer each time.
 
@@ -29,22 +29,18 @@ model:
   log_prediction: true # enables logging sample predictions in the output during training
 
   # Important ! Set the prompt format to the class you need
-  # prompt_format: canary2  # Options supported: ["canary", "canary2"]
-  # prompt_defaults: [{'role': 'user', 'slots': {'decodercontext': '', 'source_lang': '<|zh|>', 'target_lang': '<|zh|>', 'emotion': '<|emo:undefined|>', 'pnc': '<|pnc|>', 'itn': '<|noitn|>', 'diarize': '<|nodiarize|>', 'timestamp': '<|notimestamp|>'}}, {'role': 'user_partial', 'slots': {'decodercontext': ''}}]
-  prompt_format: "canary"  # Options supported: ["canary"]
-  prompt_defaults:  [{"role": "user", "slots": {"source_lang": "zh", "target_lang": "zh", "task": "asr", "pnc": "no"}}]
+  prompt_format: canary2  # Options supported: ["canary", "canary2"]
+  prompt_defaults: [{'role': 'user', 'slots': {'decodercontext': '', 'source_lang': '<|zh|>', 'target_lang': '<|zh|>', 'emotion': '<|emo:undefined|>', 'pnc': '<|nopnc|>', 'itn': '<|noitn|>', 'diarize': '<|nodiarize|>', 'timestamp': '<|notimestamp|>'}}, {'role': 'user_partial', 'slots': {'decodercontext': ''}}]
 
   model_defaults:
-    # asr_enc_hidden: 512
-    # lm_enc_hidden: 1024
-    asr_enc_hidden: 1024
-    lm_enc_hidden: 512
+    asr_enc_hidden: 512
+    lm_enc_hidden: 1024
     lm_dec_hidden: 1024
 
   train_ds:
     use_lhotse: true
     tarred_audio_filepaths: null
-    manifest_filepath: /share/nas169/jerryyang/corpus/ml-superb/commonvoice/cmn/canary_manifest_train.json
+    manifest_filepath: /share/nas169/jerryyang/corpus/matbn/revised_train.json
     sample_rate: ${model.sample_rate}
     shuffle: true
     num_workers: 8
@@ -53,8 +49,7 @@ model:
     # You can also check the following configuration dataclass:
     # https://github.com/NVIDIA/NeMo/blob/main/nemo/collections/common/data/lhotse/dataloader.py#L36
     batch_size: null
-    # batch_duration: 360
-    batch_duration: 90
+    batch_duration: 360
     quadratic_duration: 15
     use_bucketing: true
     num_buckets: 20
@@ -65,7 +60,7 @@ model:
 
   validation_ds:
     use_lhotse: true
-    manifest_filepath: /share/nas169/jerryyang/corpus/ml-superb/commonvoice/cmn/canary_manifest_dev.json
+    manifest_filepath: /share/nas169/jerryyang/corpus/matbn/revised_dev.json
     sample_rate: ${model.sample_rate}
     batch_size: 8 # you may increase batch_size if your memory allows
     shuffle: false
@@ -78,8 +73,7 @@ model:
 
   test_ds:
     use_lhotse: true
-    manifest_filepath: /share/nas169/jerryyang/corpus/ml-superb/commonvoice/cmn/canary_manifest_test.json
-    # manifest_filepath: /share/nas169/jerryyang/corpus/matbn/revised_test.json
+    manifest_filepath: /share/nas169/jerryyang/corpus/matbn/revised_test.json
     sample_rate: ${model.sample_rate}
     batch_size: 8 # you may increase batch_size if your memory allows
     shuffle: false
@@ -103,7 +97,7 @@ model:
         dir: null # Passed in training script
         type: bpe
       zh: # Mandarin tokenizer
-        dir: /share/nas169/jerryyang/NeMo/examples/asr/speech_multitask/ml-superb/cmn/mandarin_tokenizer/tokenizer_spe_bpe_v4096
+        dir: /share/nas169/jerryyang/NeMo/examples/asr/speech_multitask/matbn/chinese_tokenizer/tokenizer_spe_bpe_v4096
         type: bpe
 
     custom_tokenizer:
@@ -138,13 +132,10 @@ model:
   # FastConformer Encoder
   encoder:
     _target_: nemo.collections.asr.modules.ConformerEncoder
-    # feat_in: 128
-    feat_in: ${model.preprocessor.features}
+    feat_in: 128
     feat_out: -1 # you may set it if you need different output size other than the default d_model
-    # n_layers: 17
-    # d_model: 512
-    n_layers: 24
-    d_model: ${model.model_defaults.asr_enc_hidden}
+    n_layers: 17
+    d_model: 512
 
     # Sub-sampling params
     subsampling: dw_striding # vggnet or striding, vggnet may give better results but needs more memory
@@ -183,10 +174,8 @@ model:
   transf_encoder:
     _target_: nemo.collections.asr.modules.transformer.transformer_encoders.TransformerEncoder
     num_layers: 0
-    # hidden_size: 1024
-    # inner_size: 4096
-    hidden_size: ${model.model_defaults.lm_enc_hidden}
-    inner_size: ${multiply:${model.model_defaults.lm_enc_hidden}, 4}
+    hidden_size: 1024
+    inner_size: 4096
     num_attention_heads: 8
     ffn_dropout: 0.1
     attn_score_dropout: 0.1
@@ -203,17 +192,13 @@ model:
     pre_ln_final_layer_norm: true
 
     config_dict:
-      # max_sequence_length: 1024
-      max_sequence_length: 512
+      max_sequence_length: 1024
       num_token_types: 0
       embedding_dropout: 0.1
       learn_positional_encodings: false
-      # hidden_size: 1024
-      # inner_size: 4096
-      # num_layers: 4
-      hidden_size: ${model.model_defaults.lm_dec_hidden}
-      inner_size: ${multiply:${model.model_defaults.lm_dec_hidden}, 4}
-      num_layers: 24
+      hidden_size: 1024
+      inner_size: 4096
+      num_layers: 4
       num_attention_heads: 8
       ffn_dropout: 0.1
       attn_score_dropout: 0.1
@@ -290,7 +275,7 @@ trainer:
   use_distributed_sampler: false  # Lhotse has its own distributed sampler
 
 exp_manager:
-  exp_dir: ml-superb_cmn
+  exp_dir: matbn_2
   name: ${name}
   create_tensorboard_logger: true
   create_checkpoint_callback: true
@@ -307,8 +292,8 @@ exp_manager:
   resume_ignore_no_checkpoint: false
 
   # You may use this section to create a W&B logger
-  create_wandb_logger: true
+  create_wandb_logger: false
   wandb_logger_kwargs:
-    name: ml-superb_cmn
+    name: matbn_2
     # name: test
     project: Canary

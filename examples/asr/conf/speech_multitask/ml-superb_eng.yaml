@@ -7,20 +7,22 @@
 # One extra (linear projection) layer is added between FastConformer encoder and Transformer decoder if they have different hidden sizes
 # It is recommended to initialize FastConformer with ASR/SSL pre-trained encoder for better accuracy and faster convergence
 
-name: "canary-180m-flash-finetune"
+name: canary-180m-flash-finetune
 
 # Note: for larger models (1B+ params) initializing from a pretrained encoder
 #  may help (or even be required to) stabilize the training.
+# init_from_nemo_model: null
 # init_from_pretrained_model: "nvidia/canary-1b"
 init_from_pretrained_model: "nvidia/canary-180m-flash"
+# init_from_ptl_ckpt: /share/nas169/jerryyang/NeMo/examples/asr/speech_multitask/ml-superb_eng/canary-180m-flash-finetune/2025-03-23_14-31-02/checkpoints/canary-180m-flash-finetune--val_loss=0.1844-epoch=46.ckpt
 
 # If using example training script, below will be used to instantiate spl_tokens tokenizer.
 # Similar can be done by calling CanaryTokenizer.build_special_tokenizer(tokens, output_dir).
 # If a tokenizer exists in dir, will skip building and use already built tokenizer.
 spl_tokens:
-  model_dir: null
+  model_dir: canary_flash_tokenizers/spl_tokens
   tokens: ["translate", "transcribe", "en", "es", "de", "fr"]
-  force_rebuild: True  # Set to True to build new tokenizer each time.
+  force_rebuild: false  # Set to true to build new tokenizer each time.
 
 model:
   sample_rate: 16000
@@ -29,7 +31,7 @@ model:
   log_prediction: true # enables logging sample predictions in the output during training
 
   # Important ! Set the prompt format to the class you need
-  prompt_format: "canary2"  # Options supported: ["canary", "canary2"]
+  prompt_format: canary2  # Options supported: ["canary", "canary2"]
   prompt_defaults: [{'role': 'user', 'slots': {'decodercontext': '', 'source_lang': '<|en|>', 'target_lang': '<|en|>', 'emotion': '<|emo:undefined|>', 'pnc': '<|pnc|>', 'itn': '<|noitn|>', 'diarize': '<|nodiarize|>', 'timestamp': '<|notimestamp|>'}}, {'role': 'user_partial', 'slots': {'decodercontext': ''}}]
 
   model_defaults:
@@ -49,12 +51,14 @@ model:
     # You can also check the following configuration dataclass:
     # https://github.com/NVIDIA/NeMo/blob/main/nemo/collections/common/data/lhotse/dataloader.py#L36
     batch_size: null
-    batch_duration: 80
+    batch_duration: 360
     quadratic_duration: 15
-    use_bucketing: True
+    use_bucketing: true
     num_buckets: 20
     bucket_buffer_size: 20000
     shuffle_buffer_size: 10000
+    text_field: text
+    lang_field: target_lang
 
   validation_ds:
     use_lhotse: true
@@ -66,6 +70,8 @@ model:
     pin_memory: true
     use_start_end_token: true
     use_bucketing: false
+    text_field: text
+    lang_field: target_lang
 
   test_ds:
     use_lhotse: true
@@ -78,22 +84,26 @@ model:
     use_start_end_token: true
     use_bucketing: false
 
-  char_labels: # use for char based models
-    update_labels: false
-    labels: null # example list config: \[' ', 'a', 'b', 'c'\]
-
   # recommend small vocab size of 128 or 256 when using 4x sub-sampling
   # you may find more detail on how to train a tokenizer at: /scripts/tokenizers/process_asr_text_tokenizer.py
   tokenizer:
-    update_tokenizer: true
     dir: null  # Null for aggregate tokenizers
     type: agg  # Can be either bpe (SentencePiece tokenizer) or wpe (WordPiece tokenizer) or `agg` for aggregate tokenizers
     langs:
       spl_tokens: # special tokens model
-        dir: null # Passed in training script
+        dir: canary_flash_tokenizers/spl_tokens # Passed in training script
         type: bpe
       en: # English tokenizer (example, replace with whichever language you would like or add tokenizers to add tokenizer for additional languages) 
-        dir: null
+        dir: canary_flash_tokenizers/en
+        type: bpe
+      es:
+        dir: canary_flash_tokenizers/es
+        type: bpe
+      fr:
+        dir: canary_flash_tokenizers/fr
+        type: bpe
+      de:
+        dir: canary_flash_tokenizers/de
         type: bpe
 
     custom_tokenizer:
@@ -103,7 +113,7 @@ model:
   # Audio Preprocessor
   preprocessor:
     _target_: nemo.collections.asr.modules.AudioToMelSpectrogramPreprocessor
-    sample_rate: ${model.sample_rate}
+    sample_rate: 16000
     normalize: "per_feature"
     window_size: 0.025
     window_stride: 0.01
@@ -128,10 +138,10 @@ model:
   # FastConformer Encoder
   encoder:
     _target_: nemo.collections.asr.modules.ConformerEncoder
-    feat_in: ${model.preprocessor.features}
+    feat_in: 128
     feat_out: -1 # you may set it if you need different output size other than the default d_model
-    n_layers: 24
-    d_model: ${model.model_defaults.asr_enc_hidden}
+    n_layers: 17
+    d_model: 512
 
     # Sub-sampling params
     subsampling: dw_striding # vggnet or striding, vggnet may give better results but needs more memory
@@ -170,15 +180,15 @@ model:
   transf_encoder:
     _target_: nemo.collections.asr.modules.transformer.transformer_encoders.TransformerEncoder
     num_layers: 0
-    hidden_size: ${model.model_defaults.lm_enc_hidden}
-    inner_size: ${multiply:${model.model_defaults.lm_enc_hidden}, 4}
+    hidden_size: 1024
+    inner_size: 4096
     num_attention_heads: 8
     ffn_dropout: 0.1
     attn_score_dropout: 0.1
     attn_layer_dropout: 0.1
-    mask_future: False
-    pre_ln: True
-    pre_ln_final_layer_norm: True
+    mask_future: false
+    pre_ln: true
+    pre_ln_final_layer_norm: true
 
   transf_decoder:
     _target_: nemo.collections.asr.modules.transformer.get_nemo_transformer
@@ -188,13 +198,13 @@ model:
     pre_ln_final_layer_norm: true
 
     config_dict:
-      max_sequence_length: 512
+      max_sequence_length: 1024
       num_token_types: 0
       embedding_dropout: 0.1
       learn_positional_encodings: false
-      hidden_size: ${model.model_defaults.lm_dec_hidden}
-      inner_size: ${multiply:${model.model_defaults.lm_dec_hidden}, 4}
-      num_layers: 24
+      hidden_size: 1024
+      inner_size: 4096
+      num_layers: 4
       num_attention_heads: 8
       ffn_dropout: 0.1
       attn_score_dropout: 0.1
@@ -244,7 +254,8 @@ model:
     sched:
       name: InverseSquareRootAnnealing
       # scheduler config override
-      warmup_steps: 2500
+      # warmup_steps: 250
+      warmup_steps: 25
       warmup_ratio: null
       min_lr: 1e-6
 
@@ -252,7 +263,8 @@ trainer:
   devices: 1 # number of GPUs
   num_nodes: 1
   max_epochs: -1
-  max_steps: 100000 # computed at runtime if not set
+  # max_steps: 10000 # computed at runtime if not set
+  max_steps: 1000 # computed at runtime if not set
   val_check_interval: 1.0 # Set to 0.25 to check 4 times per epoch, or an int for number of iterations
   accelerator: auto
   strategy:
@@ -260,13 +272,13 @@ trainer:
     gradient_as_bucket_view: true
   accumulate_grad_batches: 1
   gradient_clip_val: 0.0
-  precision: bf16-mixed # Should be set to bf16-mixed/16-mixed for O1 and O2 to enable the AMP.
-  log_every_n_steps: 100  # Interval of logging.
-  enable_progress_bar: True
+  precision: 16-mixed # Should be set to bf16-mixed/16-mixed for O1 and O2 to enable the AMP.
+  log_every_n_steps: 10  # Interval of logging.
+  enable_progress_bar: true
   num_sanity_val_steps: 2 # number of steps to perform validation steps for sanity check the validation process before starting the training, setting to 0 disables it
   check_val_every_n_epoch: 1 # number of evaluations on validation every n epochs
   sync_batchnorm: true
-  enable_checkpointing: False  # Provided by exp_manager
+  enable_checkpointing: false  # Provided by exp_manager
   logger: false  # Provided by exp_manager
   use_distributed_sampler: false  # Lhotse has its own distributed sampler
 
@@ -277,19 +289,19 @@ exp_manager:
   create_checkpoint_callback: true
   checkpoint_callback_params:
     # in case of multiple validation sets, first one is used
-    monitor: "val_wer"
+    monitor: "val_loss"
     mode: "min"
-    save_top_k: 5
-    always_save_nemo: True # saves the checkpoints as nemo files instead of PTL checkpoints
+    save_top_k: 3
+    always_save_nemo: true # saves the checkpoints as nemo files instead of PTL checkpoints
 
   resume_from_checkpoint: null # The path to a checkpoint file to continue the training, restores the whole state including the epoch, step, LR schedulers, apex, etc.
-  # you need to set these two to True to continue the training
+  # you need to set these two to true to continue the training
   resume_if_exists: false
   resume_ignore_no_checkpoint: false
 
   # You may use this section to create a W&B logger
-  create_wandb_logger: false
+  create_wandb_logger: true
   wandb_logger_kwargs:
     # name: ml-superb_eng
-    name: test
+    name: simple test
     project: Canary
