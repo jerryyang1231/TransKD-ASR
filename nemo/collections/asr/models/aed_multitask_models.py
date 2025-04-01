@@ -57,6 +57,7 @@ from nemo.core.neural_types import (
     MaskType,
     NeuralType,
     SpectrogramType,
+    StringType,
 )
 from nemo.utils import logging, model_utils
 from transformers import AutoTokenizer, AutoModelForMaskedLM
@@ -621,6 +622,7 @@ class EncDecMultiTaskModel(ASRModel, ExportableEncDecModel, ASRBPEMixin, ASRModu
             "processed_signal_length": NeuralType(tuple('B'), LengthsType(), optional=True),
             "transcript": NeuralType(('B', 'T'), LabelsType(), optional=True),
             "transcript_length": NeuralType(tuple('B'), LengthsType(), optional=True),
+            "translations": NeuralType(('B'), StringType(), optional=True),
             "prompt": NeuralType(('B', 'T'), LabelsType(), optional=True),
             "prompt_length": NeuralType(tuple('B'), LengthsType(), optional=True),
             "sample_id": NeuralType(tuple('B'), LengthsType(), optional=True),
@@ -635,7 +637,8 @@ class EncDecMultiTaskModel(ASRModel, ExportableEncDecModel, ASRBPEMixin, ASRModu
             "encoder_mask": NeuralType(('B', 'T'), MaskType()),
         }
 
-    @typecheck()
+    # @typecheck()
+    @typecheck(ignore_collections=["translations"])
     def forward(
         self,
         input_signal=None,
@@ -644,7 +647,7 @@ class EncDecMultiTaskModel(ASRModel, ExportableEncDecModel, ASRBPEMixin, ASRModu
         processed_signal_length=None,
         transcript=None,
         transcript_length=None,
-        translations: Optional[List[str]] = None,
+        translations=None,
     ):
         """
         Forward pass of the model.
@@ -694,10 +697,11 @@ class EncDecMultiTaskModel(ASRModel, ExportableEncDecModel, ASRBPEMixin, ASRModu
             bert_inputs = self.bert_tokenizer(translations, return_tensors='pt', padding=True)
             bert_outputs = self.bert(**bert_inputs)
             bert_embeddings = bert_outputs.last_hidden_state
+            print("bert_embeddings.shape :", bert_embeddings.shape)
         else:
             bert_embeddings = None
-        print("bert_embeddings.shape :", bert_embeddings.shape)
-        input("stop")
+
+        # input("stop")
         transf_log_probs = None
         if transcript is not None:
             dec_mask = lens_to_mask(transcript_length, transcript.shape[1]).to(transcript.dtype)
