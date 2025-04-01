@@ -96,20 +96,15 @@
 
 # my command
 # python process_asr_text_tokenizer.py \
-#        --manifest=/share/nas169/jerryyang/corpus/ml-superb/commonvoice/eng/canary_manifest_train.json \
-#        --data_root=/share/nas169/jerryyang/NeMo/examples/asr/speech_multitask/ml-superb/eng/english_tokenizer \
-#        --tokenizer=spe \
-#        --log
-# python process_asr_text_tokenizer.py \
-#         --manifest=/share/nas169/jerryyang/corpus/ml-superb/commonvoice/cmn/canary_manifest_train.json \
-#         --data_root=/share/nas169/jerryyang/NeMo/examples/asr/speech_multitask/ml-superb/cmn/mandarin_tokenizer \
+#         --manifest=/share/nas169/jerryyang/corpus/matbn/revised_train.json \
+#         --data_root=/share/nas169/jerryyang/NeMo/examples/asr/speech_multitask/matbn/chinese_tokenizer \
 #         --vocab_size=4096 \
 #         --spe_character_coverage 0.9995 \
 #         --tokenizer spe \
 #         --log
 # python process_asr_text_tokenizer.py \
-#         --manifest=/share/nas169/jerryyang/corpus/matbn/revised_train.json \
-#         --data_root=/share/nas169/jerryyang/NeMo/examples/asr/speech_multitask/matbn/chinese_tokenizer \
+#         --manifest=/share/nas169/jerryyang/corpus/matbn/filtered_train.json \
+#         --data_root=/share/nas169/jerryyang/NeMo/examples/asr/speech_multitask/matbn_2/chinese_tokenizer \
 #         --vocab_size=4096 \
 #         --spe_character_coverage 0.9995 \
 #         --tokenizer spe \

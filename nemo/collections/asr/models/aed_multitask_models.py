@@ -59,6 +59,7 @@ from nemo.core.neural_types import (
     SpectrogramType,
 )
 from nemo.utils import logging, model_utils
+from transformers import AutoTokenizer, AutoModelForMaskedLM
 
 __all__ = ['EncDecMultiTaskModel']
 
@@ -175,6 +176,11 @@ class EncDecMultiTaskModel(ASRModel, ExportableEncDecModel, ASRBPEMixin, ASRModu
             if 'config_dict' in transf_decoder_cfg_dict:
                 transf_decoder_cfg_dict['config_dict']['vocab_size'] = vocab_size
 
+        self.bert_tokenizer = AutoTokenizer.from_pretrained("google-bert/bert-base-multilingual-cased")
+        self.bert = AutoModelForMaskedLM.from_pretrained("google-bert/bert-base-multilingual-cased")
+        for param in self.bert.parameters():
+            param.requires_grad = False
+
         self.transf_decoder = EncDecMultiTaskModel.from_config_dict(transf_decoder_cfg_dict)
 
         # Setup token classifier
@@ -224,9 +230,9 @@ class EncDecMultiTaskModel(ASRModel, ExportableEncDecModel, ASRBPEMixin, ASRModu
         # TODO: PytorchMetrics lets you join two metrics together to save compute.
         # But need to make wer and bleu have same outputs first
         # self.wer = WER(self.decoding, log_prediction=self.cfg.get("log_prediction"))
-        self.bleu = BLEU(
-            self.decoding, tokenize=self.cfg.get('bleu_tokenizer', "13a"), log_prediction=False
-        )  # Wer is handling logging
+        # self.bleu = BLEU(
+        #     self.decoding, tokenize=self.cfg.get('bleu_tokenizer', "13a"), log_prediction=False
+        # )  # Wer is handling logging
 
         # Setup encoder adapters (from ASRAdapterModelMixin)
         self.setup_adapters()
@@ -382,6 +388,9 @@ class EncDecMultiTaskModel(ASRModel, ExportableEncDecModel, ASRBPEMixin, ASRModu
         )
 
         self.wer = WER(self.decoding, use_cer=True, log_prediction=self.cfg.get("log_prediction"))
+        self.bleu = BLEU(
+            self.decoding, tokenize=self.cfg.get('bleu_tokenizer', "13a"), log_prediction=False
+        )  # Wer is handling logging
                 
         with open_dict(self.cfg.decoding):
             self.cfg.decoding = decoding_cfg
@@ -635,6 +644,7 @@ class EncDecMultiTaskModel(ASRModel, ExportableEncDecModel, ASRBPEMixin, ASRModu
         processed_signal_length=None,
         transcript=None,
         transcript_length=None,
+        translations: Optional[List[str]] = None,
     ):
         """
         Forward pass of the model.
@@ -680,11 +690,20 @@ class EncDecMultiTaskModel(ASRModel, ExportableEncDecModel, ASRBPEMixin, ASRModu
         if self.use_transf_encoder:
             enc_states = self.transf_encoder(encoder_states=enc_states, encoder_mask=enc_mask)
 
+        if translations is not None:
+            bert_inputs = self.bert_tokenizer(translations, return_tensors='pt', padding=True)
+            bert_outputs = self.bert(**bert_inputs)
+            bert_embeddings = bert_outputs.last_hidden_state
+        else:
+            bert_embeddings = None
+        print("bert_embeddings.shape :", bert_embeddings.shape)
+        input("stop")
         transf_log_probs = None
         if transcript is not None:
             dec_mask = lens_to_mask(transcript_length, transcript.shape[1]).to(transcript.dtype)
             dec_states = self.transf_decoder(
-                input_ids=transcript, decoder_mask=dec_mask, encoder_embeddings=enc_states, encoder_mask=enc_mask
+                input_ids=transcript, decoder_mask=dec_mask, encoder_embeddings=enc_states, encoder_mask=enc_mask,
+                bert_embeddings=bert_embeddings,
             )
             transf_log_probs = self.log_softmax(hidden_states=dec_states)
 
@@ -742,6 +761,7 @@ class EncDecMultiTaskModel(ASRModel, ExportableEncDecModel, ASRBPEMixin, ASRModu
             input_signal_length=batch.audio_lens,
             transcript=input_ids,
             transcript_length=batch.prompted_transcript_lens,
+            translations = batch.translations,
         )
 
         # Mask components: 1) discard padding  &  2) discard prompt (notice the negation)

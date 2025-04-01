@@ -34,13 +34,17 @@ def get_base_model(trainer, cfg):
     aed_model = None
     nemo_model_path = cfg.get('init_from_nemo_model', None)
     pretrained_name = cfg.get('init_from_pretrained_model', None)
-    if nemo_model_path is not None and pretrained_name is not None:
-        raise ValueError("Only pass `init_from_nemo_model` or `init_from_pretrained_model` but not both")
-    elif nemo_model_path is None and pretrained_name is None:
-        raise ValueError(
-            "Both `init_from_nemo_model` and `init_from_pretrained_model cannot be None, should pass atleast one of them"
-        )
-    elif nemo_model_path is not None:
+    ptl_ckpt_path = cfg.get('init_from_ptl_ckpt', None)
+
+    # Ensure that only one initialization option is provided
+    provided_options = [opt for opt in [nemo_model_path, pretrained_name, ptl_ckpt_path] if opt is not None]
+    if len(provided_options) > 1:
+        raise ValueError("Only one initialization parameter can be provided: init_from_nemo_model, init_from_pretrained_model, or init_from_ptl_ckpt")
+    elif len(provided_options) == 0:
+        raise ValueError("At least one initialization parameter must be provided: init_from_nemo_model, init_from_pretrained_model, or init_from_ptl_ckpt")
+    
+    if nemo_model_path is not None:
+        # Restore model from Nemo model file
         aed_model = EncDecMultiTaskModel.restore_from(restore_path=nemo_model_path)
     elif pretrained_name is not None:
         # Due to potential first time download of the model on the cluster, we need to make sure that only one
@@ -61,6 +65,9 @@ def get_base_model(trainer, cfg):
 
             # restore model from cached model dir
             aed_model = EncDecMultiTaskModel.from_pretrained(model_name=pretrained_name)
+    elif ptl_ckpt_path is not None:
+        aed_model = EncDecMultiTaskModel(cfg=cfg.model, trainer=trainer)
+        aed_model.maybe_init_from_pretrained_checkpoint(cfg)
 
     aed_model.set_trainer(trainer)
     return aed_model
@@ -128,11 +135,6 @@ def main(cfg):
             spl_cfg["tokens"], spl_cfg["model_dir"], force_rebuild=spl_cfg["force_rebuild"]
         )
         cfg.model.tokenizer.langs.spl_tokens.dir = spl_cfg["model_dir"]
-
-    # aed_model = EncDecMultiTaskModel(cfg=cfg.model, trainer=trainer)
-    
-    # Initialize the weights of the model from another model, if provided via config
-    # aed_model.maybe_init_from_pretrained_checkpoint(cfg)
     
     aed_model = get_base_model(trainer, cfg)
     # vocab = aed_model.tokenizer.vocabulary
@@ -153,7 +155,7 @@ def main(cfg):
     if hasattr(cfg.model, 'spec_augment') and cfg.model.spec_augment is not None:
         aed_model.spec_augment = EncDecMultiTaskModel.from_config_dict(cfg.model.spec_augment)
 
-    trainer.fit(aed_model)
+    # trainer.fit(aed_model)
 
     if hasattr(cfg.model, 'test_ds') and cfg.model.test_ds.manifest_filepath is not None:
         if aed_model.prepare_test(trainer):

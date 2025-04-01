@@ -12,7 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 from dataclasses import dataclass
-from typing import Callable, Optional, Union
+from typing import List, Callable, Optional, Union
 
 import torch.utils.data
 from lhotse import CutSet
@@ -36,6 +36,7 @@ class PromptedAudioToTextMiniBatch:
     prompted_transcript: torch.Tensor
     prompted_transcript_lens: torch.Tensor
     cuts: Optional[CutSet] = None
+    translations: Optional[List[str]] = None
 
     def get_decoder_inputs_outputs(self) -> tuple[torch.Tensor, torch.Tensor]:
         """
@@ -91,6 +92,14 @@ class PromptedAudioToTextLhotseDataset(torch.utils.data.Dataset):
         transcript, transcript_lens = self._collate_tokens(answers)
         prompts_with_answers, prompts_with_answers_lens = self._collate_tokens(prompts_with_answers)
         prompts, prompt_lens = self._collate_tokens(prompts)
+        translations = []
+        for cut in cuts:
+            if isinstance(cut, MixedCut):
+                actual_cut = cut._first_non_padding_cut  # 取得第一個非 padding 的 MonoCut
+            else:
+                actual_cut = cut
+            translation = actual_cut.custom.get("translation", "")
+            translations.append(translation)
 
         return PromptedAudioToTextMiniBatch(
             audio=audio,
@@ -102,6 +111,7 @@ class PromptedAudioToTextLhotseDataset(torch.utils.data.Dataset):
             prompted_transcript=prompts_with_answers,
             prompted_transcript_lens=prompts_with_answers_lens,
             cuts=_drop_in_memory_data(cuts),
+            translations=translations,
         )
 
     def _collate_tokens(self, tokens: list[Union[list[int], torch.Tensor]]) -> tuple[torch.Tensor, torch.Tensor]:
