@@ -130,6 +130,7 @@ def get_nemo_transformer(
             pre_ln=cfg.get('pre_ln', False),
             pre_ln_final_layer_norm=pre_ln_final_layer_norm,
             num_token_types=cfg.get('num_token_types', 2),
+            add_gated_x_attn=cfg.get('add_gated_x_attn', False),
         )
 
     return model

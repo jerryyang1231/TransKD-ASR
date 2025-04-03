@@ -60,7 +60,7 @@ from nemo.core.neural_types import (
     StringType,
 )
 from nemo.utils import logging, model_utils
-from transformers import AutoTokenizer, AutoModelForMaskedLM
+from transformers import AutoTokenizer, BertModel
 
 __all__ = ['EncDecMultiTaskModel']
 
@@ -178,7 +178,7 @@ class EncDecMultiTaskModel(ASRModel, ExportableEncDecModel, ASRBPEMixin, ASRModu
                 transf_decoder_cfg_dict['config_dict']['vocab_size'] = vocab_size
 
         self.bert_tokenizer = AutoTokenizer.from_pretrained("google-bert/bert-base-multilingual-cased")
-        self.bert = AutoModelForMaskedLM.from_pretrained("google-bert/bert-base-multilingual-cased")
+        self.bert = BertModel.from_pretrained("google-bert/bert-base-multilingual-cased")
         for param in self.bert.parameters():
             param.requires_grad = False
 
@@ -637,7 +637,6 @@ class EncDecMultiTaskModel(ASRModel, ExportableEncDecModel, ASRBPEMixin, ASRModu
             "encoder_mask": NeuralType(('B', 'T'), MaskType()),
         }
 
-    # @typecheck()
     @typecheck(ignore_collections=["translations"])
     def forward(
         self,
@@ -695,23 +694,48 @@ class EncDecMultiTaskModel(ASRModel, ExportableEncDecModel, ASRBPEMixin, ASRModu
 
         if translations is not None:
             bert_inputs = self.bert_tokenizer(translations, return_tensors='pt', padding=True)
+            device = next(self.parameters()).device
+            bert_inputs = {key: value.to(device) for key, value in bert_inputs.items()}
             bert_outputs = self.bert(**bert_inputs)
-            bert_embeddings = bert_outputs.last_hidden_state
-            print("bert_embeddings.shape :", bert_embeddings.shape)
+            bert_last_hidden_states = bert_outputs.last_hidden_state
         else:
-            bert_embeddings = None
+            bert_last_hidden_states = None
 
-        # input("stop")
         transf_log_probs = None
         if transcript is not None:
             dec_mask = lens_to_mask(transcript_length, transcript.shape[1]).to(transcript.dtype)
             dec_states = self.transf_decoder(
                 input_ids=transcript, decoder_mask=dec_mask, encoder_embeddings=enc_states, encoder_mask=enc_mask,
-                bert_embeddings=bert_embeddings,
+                bert_embeddings=bert_last_hidden_states,
             )
             transf_log_probs = self.log_softmax(hidden_states=dec_states)
 
         return transf_log_probs, encoded_len, enc_states, enc_mask
+
+    def setup_optimizer_param_groups(self):
+        # 先呼叫父類方法，讓原始邏輯執行，生成 _optimizer_param_groups
+        super().setup_optimizer_param_groups()
+        
+        # 將生成的參數群組丟棄，轉而用我們自訂的邏輯：根據參數名稱區分 adapter 與其他部分
+        adapter_params = []
+        other_params = []
+        adapter_keywords = ["bert_projection", "zero_sub_layer", "layer_norm_0", "attn_gate", "ff_ln", "ff", "ff_gate"]
+        for name, param in self.named_parameters():
+            # 如果參數名稱中包含任何一個 adapter 關鍵字，則視為 adapter 參數
+            if any(keyword in name for keyword in adapter_keywords):
+                adapter_params.append(param)
+            else:
+                other_params.append(param)
+                
+        # 這裡我們設定 adapter 的學習率為 1e-4，其餘部分學習率為 0（凍結）
+        self._optimizer_param_groups = [
+            {"params": adapter_params, "lr": 1e-4},
+            {"params": other_params, "lr": 0.0},
+        ]
+        print("optimizing params: ")
+        print([name for name, param in self.named_parameters()
+               if any(keyword in name for keyword in adapter_keywords)])
+        return self._optimizer_param_groups
 
     # PTL-specific methods
     def training_step(self, batch: PromptedAudioToTextMiniBatch, batch_nb):

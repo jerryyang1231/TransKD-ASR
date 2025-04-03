@@ -21,7 +21,7 @@ init_from_ptl_ckpt: /share/nas169/jerryyang/NeMo/examples/asr/speech_multitask/m
 spl_tokens:
   model_dir: /share/nas169/jerryyang/NeMo/examples/asr/speech_multitask/matbn_2/special_tokenizer
   tokens: ["translate", "transcribe", "en", "es", "de", "fr", "zh", "startofcontext", "emo:undefined", "noitn", "nodiarize", "notimestamp"]
-  force_rebuild: false  # Set to True to build new tokenizer each time.
+  force_rebuild: false  # Set to true to build new tokenizer each time.
 
 model:
   sample_rate: 16000
@@ -207,6 +207,7 @@ model:
       hidden_act: relu
       pre_ln: true
       vocab_size: None  # Will be set by the model at runtime
+      add_gated_x_attn: true
 
   # Label Prediction Head (Token Classifier)
   head:
@@ -264,6 +265,7 @@ trainer:
   strategy:
     _target_: lightning.pytorch.strategies.DDPStrategy
     gradient_as_bucket_view: true
+    find_unused_parameters: true
   accumulate_grad_batches: 1
   gradient_clip_val: 1.0
   precision: bf16-mixed # Should be set to bf16-mixed/16-mixed for O1 and O2 to enable the AMP.
@@ -294,7 +296,7 @@ exp_manager:
   resume_ignore_no_checkpoint: false
 
   # You may use this section to create a W&B logger
-  create_wandb_logger: false
+  create_wandb_logger: true
   wandb_logger_kwargs:
-    name: matbn_2 (bf16-mixed)
+    name: canary-flamingo
     project: Canary

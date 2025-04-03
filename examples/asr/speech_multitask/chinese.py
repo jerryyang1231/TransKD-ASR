@@ -13,8 +13,6 @@
 # limitations under the License.
 
 # my command
-# python chinese.py --config-name=ml-superb_cmn
-# python chinese.py --config-name=matbn
 # python chinese.py --config-name=matbn_2
 
 import time
@@ -137,7 +135,6 @@ def main(cfg):
         cfg.model.tokenizer.langs.spl_tokens.dir = spl_cfg["model_dir"]
     
     aed_model = get_base_model(trainer, cfg)
-    # vocab = aed_model.tokenizer.vocabulary
 
     # Check vocabulary type and update if needed
     aed_model = check_vocabulary(aed_model, cfg)
@@ -155,7 +152,7 @@ def main(cfg):
     if hasattr(cfg.model, 'spec_augment') and cfg.model.spec_augment is not None:
         aed_model.spec_augment = EncDecMultiTaskModel.from_config_dict(cfg.model.spec_augment)
 
-    # trainer.fit(aed_model)
+    trainer.fit(aed_model)
 
     if hasattr(cfg.model, 'test_ds') and cfg.model.test_ds.manifest_filepath is not None:
         if aed_model.prepare_test(trainer):

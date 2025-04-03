@@ -54,8 +54,24 @@ class TransformerDecoderBlock(nn.Module, AttentionAdapterModuleMixin):
         ffn_dropout: float = 0.0,
         hidden_act: str = "relu",
         pre_ln: bool = False,
+        add_gated_x_attn: bool = False,
     ):
         super().__init__()
+
+        self.add_gated_x_attn = add_gated_x_attn
+        if self.add_gated_x_attn:
+            self.bert_projection = nn.Linear(768, hidden_size)
+            print("Adding gated x attn layers")
+            self.zero_sub_layer = MultiHeadAttention(
+                hidden_size, num_attention_heads, attn_score_dropout, attn_layer_dropout
+            )
+            self.layer_norm_0 = nn.LayerNorm(hidden_size, eps=1e-5)
+            self.attn_gate = nn.Parameter(torch.tensor([0.]))
+            
+            self.ff_ln = nn.LayerNorm(hidden_size, eps=1e-5)
+            self.ff = PositionWiseFF(hidden_size, inner_size, ffn_dropout, hidden_act)
+            self.ff_gate = nn.Parameter(torch.tensor([0.])) 
+
         self.pre_ln = pre_ln
         self.layer_norm_1 = nn.LayerNorm(hidden_size, eps=1e-5)
         self.first_sub_layer = MultiHeadAttention(
@@ -71,6 +87,25 @@ class TransformerDecoderBlock(nn.Module, AttentionAdapterModuleMixin):
         # Information for the adapter module mixin
         self.self_attention_model = "transf_abs"
 
+    def apply_gated_x_attn(self, x, bert_features):
+        # 投影 BERT 特徵
+        projected_bert = self.bert_projection(bert_features)
+
+        bert_mask = None
+        
+        # 先對 x 做 LayerNorm，再進行 cross attention，最後用 gate 融合
+        x_norm = self.layer_norm_0(x)
+        attn_out = self.zero_sub_layer(x_norm, projected_bert, projected_bert, bert_mask)
+        gate = torch.tanh(self.attn_gate)
+        x = x + attn_out * gate
+
+        # 同時對 x 使用一個 FFN 部分進行進一步融合
+        ff_in = self.ff_ln(x)
+        ff_out = self.ff(ff_in)
+        gate_ff = torch.tanh(self.ff_gate)
+        x = x + ff_out * gate_ff
+        return x
+    
     def forward_preln(self, decoder_query, decoder_mask, decoder_keys, encoder_states, encoder_mask):
         """
         Pre-LayerNorm block
@@ -153,7 +188,11 @@ class TransformerDecoderBlock(nn.Module, AttentionAdapterModuleMixin):
 
         return self.layer_norm_3(output_states)
 
-    def forward(self, decoder_query, decoder_mask, decoder_keys, encoder_states, encoder_mask):
+    def forward(self, decoder_query, decoder_mask, decoder_keys, encoder_states, encoder_mask, bert_embeddings=None):
+        # 若有傳入 bert_embeddings，則先應用 gated cross attention
+        if self.add_gated_x_attn and bert_embeddings is not None:
+            decoder_query = self.apply_gated_x_attn(decoder_query, bert_embeddings)
+        
         if self.pre_ln:
             return self.forward_preln(decoder_query, decoder_mask, decoder_keys, encoder_states, encoder_mask)
         else:
@@ -186,6 +225,7 @@ class TransformerDecoder(nn.Module):
         hidden_act: str = "relu",
         pre_ln: bool = False,
         pre_ln_final_layer_norm: bool = True,
+        add_gated_x_attn: bool = False,
     ):
         super().__init__()
 
@@ -205,6 +245,7 @@ class TransformerDecoder(nn.Module):
             ffn_dropout,
             hidden_act,
             pre_ln,
+            add_gated_x_attn,
         )
         self.layers = nn.ModuleList([copy.deepcopy(layer) for _ in range(num_layers)])
         self.diagonal = 0
@@ -228,6 +269,7 @@ class TransformerDecoder(nn.Module):
         decoder_mems_list=None,
         return_mems=False,
         return_mems_as_list=True,
+        bert_embeddings=None,
     ):
         """
         Args:
@@ -252,7 +294,7 @@ class TransformerDecoder(nn.Module):
                 cached_mems_list = memory_states.unsqueeze(0)
 
         for i, layer in enumerate(self.layers):
-            decoder_states = layer(decoder_states, decoder_attn_mask, memory_states, encoder_states, encoder_attn_mask)
+            decoder_states = layer(decoder_states, decoder_attn_mask, memory_states, encoder_states, encoder_attn_mask, bert_embeddings)
             memory_states = self._get_memory_states(decoder_states, decoder_mems_list, i + 1)
             if return_mems:
                 if return_mems_as_list:

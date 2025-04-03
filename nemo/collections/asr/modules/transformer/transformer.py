@@ -177,6 +177,7 @@ class TransformerDecoderNM(DecoderModule, Exportable):
         hidden_act: str = 'relu',
         pre_ln: bool = False,
         pre_ln_final_layer_norm: bool = True,
+        add_gated_x_attn: bool = False,
     ):
         super().__init__()
 
@@ -208,9 +209,10 @@ class TransformerDecoderNM(DecoderModule, Exportable):
             hidden_act=hidden_act,
             pre_ln=pre_ln,
             pre_ln_final_layer_norm=pre_ln_final_layer_norm,
+            add_gated_x_attn=add_gated_x_attn,
         )
 
-    @typecheck()
+    @typecheck(ignore_collections=["bert_embeddings"])
     def forward(
         self,
         input_ids,
@@ -218,7 +220,9 @@ class TransformerDecoderNM(DecoderModule, Exportable):
         encoder_embeddings,
         encoder_mask,
         decoder_mems=None,
+        bert_embeddings=None,
     ):
+
         start_pos = 0
         if decoder_mems is not None:
             start_pos = input_ids.shape[1] - 1
@@ -234,6 +238,7 @@ class TransformerDecoderNM(DecoderModule, Exportable):
             decoder_mems_list=decoder_mems,
             return_mems=self.return_mems,
             return_mems_as_list=False,
+            bert_embeddings=bert_embeddings,
         )
         if self.return_mems:
             decoder_hidden_states = torch.transpose(decoder_hidden_states, 0, 1)
