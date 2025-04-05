@@ -298,5 +298,5 @@ exp_manager:
   # You may use this section to create a W&B logger
   create_wandb_logger: true
   wandb_logger_kwargs:
-    name: canary-flamingo
+    name: canary-flamingo (proper bert_attn_mask lr=1e-5)
     project: Canary

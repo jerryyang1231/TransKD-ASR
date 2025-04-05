@@ -221,6 +221,7 @@ class TransformerDecoderNM(DecoderModule, Exportable):
         encoder_mask,
         decoder_mems=None,
         bert_embeddings=None,
+        bert_mask=None,
     ):
 
         start_pos = 0
@@ -239,6 +240,7 @@ class TransformerDecoderNM(DecoderModule, Exportable):
             return_mems=self.return_mems,
             return_mems_as_list=False,
             bert_embeddings=bert_embeddings,
+            bert_mask=bert_mask,
         )
         if self.return_mems:
             decoder_hidden_states = torch.transpose(decoder_hidden_states, 0, 1)

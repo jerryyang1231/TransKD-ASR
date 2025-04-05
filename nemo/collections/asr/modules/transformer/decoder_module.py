@@ -33,6 +33,7 @@ class DecoderModule(NeuralModule, ABC):
             "encoder_mask": NeuralType(('B', 'T'), MaskType(), optional=True),
             "decoder_mems": NeuralType(('B', 'D', 'T', 'D'), EncodedRepresentation(), optional=True),
             "bert_embeddings": NeuralType(('B', 'T', 'D'), ChannelType(), optional=True),
+            "bert_mask": NeuralType(('B', 'T'), MaskType(), optional=True),
         }
 
     @property

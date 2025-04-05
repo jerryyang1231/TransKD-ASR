@@ -87,11 +87,9 @@ class TransformerDecoderBlock(nn.Module, AttentionAdapterModuleMixin):
         # Information for the adapter module mixin
         self.self_attention_model = "transf_abs"
 
-    def apply_gated_x_attn(self, x, bert_features):
+    def apply_gated_x_attn(self, x, bert_features, bert_mask):
         # 投影 BERT 特徵
         projected_bert = self.bert_projection(bert_features)
-
-        bert_mask = None
         
         # 先對 x 做 LayerNorm，再進行 cross attention，最後用 gate 融合
         x_norm = self.layer_norm_0(x)
@@ -188,10 +186,10 @@ class TransformerDecoderBlock(nn.Module, AttentionAdapterModuleMixin):
 
         return self.layer_norm_3(output_states)
 
-    def forward(self, decoder_query, decoder_mask, decoder_keys, encoder_states, encoder_mask, bert_embeddings=None):
+    def forward(self, decoder_query, decoder_mask, decoder_keys, encoder_states, encoder_mask, bert_embeddings=None, bert_mask=None):
         # 若有傳入 bert_embeddings，則先應用 gated cross attention
         if self.add_gated_x_attn and bert_embeddings is not None:
-            decoder_query = self.apply_gated_x_attn(decoder_query, bert_embeddings)
+            decoder_query = self.apply_gated_x_attn(decoder_query, bert_embeddings, bert_mask)
         
         if self.pre_ln:
             return self.forward_preln(decoder_query, decoder_mask, decoder_keys, encoder_states, encoder_mask)
@@ -270,6 +268,7 @@ class TransformerDecoder(nn.Module):
         return_mems=False,
         return_mems_as_list=True,
         bert_embeddings=None,
+        bert_mask=None,
     ):
         """
         Args:
@@ -286,6 +285,8 @@ class TransformerDecoder(nn.Module):
         """
         decoder_attn_mask = form_attention_mask(decoder_mask, diagonal=self.diagonal)
         encoder_attn_mask = form_attention_mask(encoder_mask)
+        bert_attn_mask = form_attention_mask(bert_mask)
+
         memory_states = self._get_memory_states(decoder_states, decoder_mems_list, 0)
         if return_mems:
             if return_mems_as_list:
@@ -294,7 +295,7 @@ class TransformerDecoder(nn.Module):
                 cached_mems_list = memory_states.unsqueeze(0)
 
         for i, layer in enumerate(self.layers):
-            decoder_states = layer(decoder_states, decoder_attn_mask, memory_states, encoder_states, encoder_attn_mask, bert_embeddings)
+            decoder_states = layer(decoder_states, decoder_attn_mask, memory_states, encoder_states, encoder_attn_mask, bert_embeddings, bert_attn_mask)
             memory_states = self._get_memory_states(decoder_states, decoder_mems_list, i + 1)
             if return_mems:
                 if return_mems_as_list:

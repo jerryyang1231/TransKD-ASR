@@ -698,15 +698,17 @@ class EncDecMultiTaskModel(ASRModel, ExportableEncDecModel, ASRBPEMixin, ASRModu
             bert_inputs = {key: value.to(device) for key, value in bert_inputs.items()}
             bert_outputs = self.bert(**bert_inputs)
             bert_last_hidden_states = bert_outputs.last_hidden_state
+            bert_mask = bert_inputs["attention_mask"]  # shape: [B, L]
         else:
             bert_last_hidden_states = None
+            bert_mask = None
 
         transf_log_probs = None
         if transcript is not None:
             dec_mask = lens_to_mask(transcript_length, transcript.shape[1]).to(transcript.dtype)
             dec_states = self.transf_decoder(
                 input_ids=transcript, decoder_mask=dec_mask, encoder_embeddings=enc_states, encoder_mask=enc_mask,
-                bert_embeddings=bert_last_hidden_states,
+                bert_embeddings=bert_last_hidden_states, bert_mask=bert_mask,
             )
             transf_log_probs = self.log_softmax(hidden_states=dec_states)
 
@@ -727,9 +729,9 @@ class EncDecMultiTaskModel(ASRModel, ExportableEncDecModel, ASRBPEMixin, ASRModu
             else:
                 other_params.append(param)
                 
-        # 這裡我們設定 adapter 的學習率為 1e-4，其餘部分學習率為 0（凍結）
+        # 這裡我們設定 adapter 的學習率為 1e-5，其餘部分學習率為 0（凍結）
         self._optimizer_param_groups = [
-            {"params": adapter_params, "lr": 1e-4},
+            {"params": adapter_params, "lr": 1e-5},
             {"params": other_params, "lr": 0.0},
         ]
         print("optimizing params: ")
