@@ -172,6 +172,13 @@ class ASRModel(ModelPT, ABC):
             if valid_gradients < 1:
                 logging.warning(f'detected inf or nan values in gradients! Setting gradients to zero.')
                 self.zero_grad()
+        
+        for name, param in self.named_parameters():
+            if any(keyword in name for keyword in ["bert_projection", "zero_sub_layer", "layer_norm_0", "attn_gate", "ff_ln", "ff_gate", "ff"]):
+                if param.grad is not None:
+                    print(f"{name} 梯度均值: {param.grad.abs().mean().item()}")
+                else:
+                    print(f"{name} 梯度為 None")
 
     def on_train_epoch_start(self) -> None:
         """

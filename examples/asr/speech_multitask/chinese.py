@@ -139,6 +139,15 @@ def main(cfg):
     # Check vocabulary type and update if needed
     aed_model = check_vocabulary(aed_model, cfg)
 
+    # Freeze 整個模型除了 adapter 部分
+    adapter_keywords = ["bert_projection", "zero_sub_layer", "layer_norm_0", "attn_gate", "ff_ln", "ff_gate", "ff"]
+    # adapter_keywords = ["zero_sub_layer", "layer_norm_0", "attn_gate", "ff_ln", "ff_gate", "ff"]
+    for name, param in aed_model.named_parameters():
+        if any(keyword in name for keyword in adapter_keywords):
+            param.requires_grad = True
+        else:
+            param.requires_grad = False
+
     # Avoid key error
     aed_model.change_prompt()
 

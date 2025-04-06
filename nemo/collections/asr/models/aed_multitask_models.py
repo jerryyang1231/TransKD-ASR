@@ -269,6 +269,7 @@ class EncDecMultiTaskModel(ASRModel, ExportableEncDecModel, ASRBPEMixin, ASRModu
 
         logging.info(f"Changed decoding strategy to \n{OmegaConf.to_yaml(self.cfg.decoding)}")
 
+    # 暫時寫死只要call change_vocabulary，回傳的就會是cer，即使顯示是wer
     def change_vocabulary(
         self,
         new_tokenizer_dir: Union[str, DictConfig],
@@ -714,34 +715,41 @@ class EncDecMultiTaskModel(ASRModel, ExportableEncDecModel, ASRBPEMixin, ASRModu
 
         return transf_log_probs, encoded_len, enc_states, enc_mask
 
-    def setup_optimizer_param_groups(self):
-        # 先呼叫父類方法，讓原始邏輯執行，生成 _optimizer_param_groups
-        super().setup_optimizer_param_groups()
+    # def setup_optimizer_param_groups(self):
+    #     # 先呼叫父類方法，讓原始邏輯執行，生成 _optimizer_param_groups
+    #     super().setup_optimizer_param_groups()
         
-        # 將生成的參數群組丟棄，轉而用我們自訂的邏輯：根據參數名稱區分 adapter 與其他部分
-        adapter_params = []
-        other_params = []
-        adapter_keywords = ["bert_projection", "zero_sub_layer", "layer_norm_0", "attn_gate", "ff_ln", "ff", "ff_gate"]
-        for name, param in self.named_parameters():
-            # 如果參數名稱中包含任何一個 adapter 關鍵字，則視為 adapter 參數
-            if any(keyword in name for keyword in adapter_keywords):
-                adapter_params.append(param)
-            else:
-                other_params.append(param)
+    #     # 將生成的參數群組丟棄，轉而用我們自訂的邏輯：根據參數名稱區分 adapter 與其他部分
+    #     adapter_params = []
+    #     other_params = []
+    #     adapter_keywords = ["bert_projection", "zero_sub_layer", "layer_norm_0", "attn_gate", "ff_ln", "ff", "ff_gate"]
+    #     for name, param in self.named_parameters():
+    #         # 如果參數名稱中包含任何一個 adapter 關鍵字，則視為 adapter 參數
+    #         if any(keyword in name for keyword in adapter_keywords):
+    #             adapter_params.append(param)
+    #         else:
+    #             other_params.append(param)
                 
-        # 這裡我們設定 adapter 的學習率為 1e-5，其餘部分學習率為 0（凍結）
-        self._optimizer_param_groups = [
-            {"params": adapter_params, "lr": 1e-5},
-            {"params": other_params, "lr": 0.0},
-        ]
-        print("optimizing params: ")
-        print([name for name, param in self.named_parameters()
-               if any(keyword in name for keyword in adapter_keywords)])
-        return self._optimizer_param_groups
+    #     # 這裡我們設定 adapter 的學習率為 1e-5，其餘部分學習率為 0（凍結）
+    #     self._optimizer_param_groups = [
+    #         {"params": adapter_params, "lr": 1e-5},
+    #         {"params": other_params, "lr": 0.0},
+    #     ]
+    #     print("optimizing params: ")
+    #     print([name for name, param in self.named_parameters()
+    #            if any(keyword in name for keyword in adapter_keywords)])
+    #     return self._optimizer_param_groups
 
     # PTL-specific methods
     def training_step(self, batch: PromptedAudioToTextMiniBatch, batch_nb):
-
+        
+        # if self.trainer.global_step == 0:
+        #     for idx, group in enumerate(self._optimizer.param_groups):
+        #         print(f"Group {idx}:")
+        #         for p in group['params']:
+        #             # 透過 id 比較可以和 model.named_parameters() 中的參數對應
+        #             print(f"param id: {id(p)}, shape: {p.shape}, requires_grad: {p.requires_grad}")
+        
         if batch is None:
             return torch.tensor([0.0])
 
@@ -758,6 +766,7 @@ class EncDecMultiTaskModel(ASRModel, ExportableEncDecModel, ASRBPEMixin, ASRModu
             input_signal_length=batch.audio_lens,
             transcript=input_ids,
             transcript_length=input_ids_lens,
+            translations = batch.translations,
         )
 
         # Mask components: 1) discard padding  &  2) discard prompt (notice the negation)
@@ -779,6 +788,13 @@ class EncDecMultiTaskModel(ASRModel, ExportableEncDecModel, ASRBPEMixin, ASRModu
             'input_to_padding_ratio': num_frames / tot_frames,
             'output_to_padding_ratio': num_tokens / tot_tokens,
         }
+        
+        for name, param in self.named_parameters():
+            if any(keyword in name for keyword in ["bert_projection", "zero_sub_layer", "layer_norm_0", "attn_gate", "ff_ln", "ff_gate", "ff"]):
+                if param.grad is not None:
+                    print(f"{name} 梯度均值: {param.grad.abs().mean().item()}")
+                else:
+                    print(f"{name} 梯度為 None")
 
         return {'loss': audio_loss, 'log': tensorboard_logs}
 
