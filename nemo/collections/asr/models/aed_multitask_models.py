@@ -636,6 +636,8 @@ class EncDecMultiTaskModel(ASRModel, ExportableEncDecModel, ASRBPEMixin, ASRModu
             "encoded_lengths": NeuralType(tuple('B'), LengthsType()),
             "encoder_states": NeuralType(('B', 'T', 'D'), ChannelType()),
             "encoder_mask": NeuralType(('B', 'T'), MaskType()),
+            "bert_embeddings": NeuralType(('B', 'T', 'D'), ChannelType()),
+            "bert_mask": NeuralType(('B', 'T'), MaskType()),
         }
 
     @typecheck(ignore_collections=["translations"])
@@ -713,42 +715,10 @@ class EncDecMultiTaskModel(ASRModel, ExportableEncDecModel, ASRBPEMixin, ASRModu
             )
             transf_log_probs = self.log_softmax(hidden_states=dec_states)
 
-        return transf_log_probs, encoded_len, enc_states, enc_mask
-
-    # def setup_optimizer_param_groups(self):
-    #     # 先呼叫父類方法，讓原始邏輯執行，生成 _optimizer_param_groups
-    #     super().setup_optimizer_param_groups()
-        
-    #     # 將生成的參數群組丟棄，轉而用我們自訂的邏輯：根據參數名稱區分 adapter 與其他部分
-    #     adapter_params = []
-    #     other_params = []
-    #     adapter_keywords = ["bert_projection", "zero_sub_layer", "layer_norm_0", "attn_gate", "ff_ln", "ff", "ff_gate"]
-    #     for name, param in self.named_parameters():
-    #         # 如果參數名稱中包含任何一個 adapter 關鍵字，則視為 adapter 參數
-    #         if any(keyword in name for keyword in adapter_keywords):
-    #             adapter_params.append(param)
-    #         else:
-    #             other_params.append(param)
-                
-    #     # 這裡我們設定 adapter 的學習率為 1e-5，其餘部分學習率為 0（凍結）
-    #     self._optimizer_param_groups = [
-    #         {"params": adapter_params, "lr": 1e-5},
-    #         {"params": other_params, "lr": 0.0},
-    #     ]
-    #     print("optimizing params: ")
-    #     print([name for name, param in self.named_parameters()
-    #            if any(keyword in name for keyword in adapter_keywords)])
-    #     return self._optimizer_param_groups
+        return transf_log_probs, encoded_len, enc_states, enc_mask, bert_last_hidden_states, bert_mask
 
     # PTL-specific methods
     def training_step(self, batch: PromptedAudioToTextMiniBatch, batch_nb):
-        
-        # if self.trainer.global_step == 0:
-        #     for idx, group in enumerate(self._optimizer.param_groups):
-        #         print(f"Group {idx}:")
-        #         for p in group['params']:
-        #             # 透過 id 比較可以和 model.named_parameters() 中的參數對應
-        #             print(f"param id: {id(p)}, shape: {p.shape}, requires_grad: {p.requires_grad}")
         
         if batch is None:
             return torch.tensor([0.0])
@@ -761,7 +731,7 @@ class EncDecMultiTaskModel(ASRModel, ExportableEncDecModel, ASRBPEMixin, ASRModu
         tot_frames = torch.as_tensor(batch.audio.numel(), device=num_frames.device, dtype=torch.float)
         tot_tokens = torch.as_tensor(batch.prompted_transcript.numel(), device=num_frames.device, dtype=torch.float)
 
-        transf_log_probs, encoded_len, enc_states, enc_mask = self.forward(
+        transf_log_probs, encoded_len, enc_states, enc_mask, bert_embeddings, bert_mask = self.forward(
             input_signal=batch.audio,
             input_signal_length=batch.audio_lens,
             transcript=input_ids,
@@ -788,13 +758,6 @@ class EncDecMultiTaskModel(ASRModel, ExportableEncDecModel, ASRBPEMixin, ASRModu
             'input_to_padding_ratio': num_frames / tot_frames,
             'output_to_padding_ratio': num_tokens / tot_tokens,
         }
-        
-        for name, param in self.named_parameters():
-            if any(keyword in name for keyword in ["bert_projection", "zero_sub_layer", "layer_norm_0", "attn_gate", "ff_ln", "ff_gate", "ff"]):
-                if param.grad is not None:
-                    print(f"{name} 梯度均值: {param.grad.abs().mean().item()}")
-                else:
-                    print(f"{name} 梯度為 None")
 
         return {'loss': audio_loss, 'log': tensorboard_logs}
 
@@ -802,7 +765,7 @@ class EncDecMultiTaskModel(ASRModel, ExportableEncDecModel, ASRBPEMixin, ASRModu
         input_ids, labels = batch.get_decoder_inputs_outputs()
         input_ids_lens = batch.prompted_transcript_lens - 1
 
-        transf_log_probs, encoded_len, enc_states, enc_mask = self.forward(
+        transf_log_probs, encoded_len, enc_states, enc_mask, bert_embeddings, bert_mask = self.forward(
             input_signal=batch.audio,
             input_signal_length=batch.audio_lens,
             transcript=input_ids,
@@ -831,6 +794,8 @@ class EncDecMultiTaskModel(ASRModel, ExportableEncDecModel, ASRBPEMixin, ASRModu
             targets_lengths=batch.transcript_lens,
             predictions_mask=enc_mask,
             input_ids=batch.prompt,
+            bert_embeddings=bert_embeddings,
+            bert_mask=bert_mask,
         )
         
         wer, wer_num, wer_denom = self.wer.compute()
@@ -856,7 +821,6 @@ class EncDecMultiTaskModel(ASRModel, ExportableEncDecModel, ASRBPEMixin, ASRModu
 
     def validation_step(self, batch, batch_idx, dataloader_idx=0):
         metrics = self.validation_pass(batch, batch_idx, dataloader_idx, eval_mode="val")
-        # print("val output :", metrics)
         if type(self.trainer.val_dataloaders) == list and len(self.trainer.val_dataloaders) > 1:
             self.validation_step_outputs[dataloader_idx].append(metrics)
         else:
@@ -865,7 +829,6 @@ class EncDecMultiTaskModel(ASRModel, ExportableEncDecModel, ASRBPEMixin, ASRModu
 
     def test_step(self, batch, batch_idx, dataloader_idx=0):
         metrics = self.validation_pass(batch, batch_idx, dataloader_idx, eval_mode="test")
-        # print("test output :", metrics)
         if type(self.trainer.test_dataloaders) == list and len(self.trainer.test_dataloaders) > 1:
             # self.validation_step_outputs[dataloader_idx].append(metrics)
             self.test_step_outputs[dataloader_idx].append(metrics)

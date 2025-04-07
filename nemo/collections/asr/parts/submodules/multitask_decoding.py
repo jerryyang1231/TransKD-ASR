@@ -14,7 +14,7 @@
 
 from abc import abstractmethod
 from dataclasses import dataclass, field, is_dataclass
-from typing import List, Optional, Union
+from typing import Any, List, Optional, Union
 
 import torch
 from omegaconf import OmegaConf
@@ -215,6 +215,8 @@ class AbstractMultiTaskDecoding(ConfidenceMixin):
         decoder_input_ids: Optional[torch.Tensor] = None,
         return_hypotheses: bool = False,
         partial_hypotheses: Optional[List[Hypothesis]] = None,
+        bert_embeddings: Optional[torch.Tensor] = None,
+        bert_mask: Optional[torch.Tensor] = None,
     ) -> Union[List[Hypothesis], List[List[Hypothesis]]]:
         """
         Decode an encoder output by autoregressive decoding of the Decoder+Joint networks.
@@ -241,6 +243,8 @@ class AbstractMultiTaskDecoding(ConfidenceMixin):
                 encoder_input_mask=encoder_input_mask,
                 decoder_input_ids=decoder_input_ids,
                 partial_hypotheses=partial_hypotheses,
+                bert_embeddings=bert_embeddings,
+                bert_mask=bert_mask,
             )  # type: [List[Hypothesis]]
 
             # extract the hypotheses

@@ -12,7 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-from typing import List, Optional, Tuple, Union
+from typing import Any, List, Optional, Tuple, Union
 
 import editdistance
 import jiwer
@@ -276,11 +276,15 @@ class WER(Metric):
                 fold_consecutive=self.fold_consecutive,
             )
         elif isinstance(self.decoding, AbstractMultiTaskDecoding):
-            self.decode = lambda predictions, prediction_lengths, predictions_mask, input_ids, targets: self.decoding.decode_predictions_tensor(
+            # predictions在這邊僅代表一個通用稱呼，不用太在意是哪個module的output
+            # 實際上在這邊就是encoder的output
+            self.decode = lambda predictions, prediction_lengths, predictions_mask, input_ids, targets, bert_embeddings, bert_mask: self.decoding.decode_predictions_tensor(
                 encoder_hidden_states=predictions,
                 encoder_input_mask=predictions_mask,
                 decoder_input_ids=input_ids,
                 return_hypotheses=False,
+                bert_embeddings=bert_embeddings,
+                bert_mask=bert_mask,
             )
         else:
             raise TypeError(f"WER metric does not support decoding of type {type(self.decoding)}")
@@ -296,6 +300,8 @@ class WER(Metric):
         targets_lengths: torch.Tensor,
         predictions_mask: Optional[torch.Tensor] = None,
         input_ids: Optional[torch.Tensor] = None,
+        bert_embeddings: Optional[torch.Tensor] = None,
+        bert_mask: Optional[torch.Tensor] = None,
     ):
         """
         Updates metric state.
@@ -323,7 +329,7 @@ class WER(Metric):
                 target = targets_cpu_tensor[ind][:tgt_len].numpy().tolist()
                 reference = self.decoding.decode_tokens_to_str(target)
                 references.append(reference)
-            hypotheses = self.decode(predictions, predictions_lengths, predictions_mask, input_ids, targets)
+            hypotheses = self.decode(predictions, predictions_lengths, predictions_mask, input_ids, targets, bert_embeddings, bert_mask)
 
         if self.log_prediction:
             logging.info("\n")

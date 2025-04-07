@@ -296,8 +296,8 @@ exp_manager:
   resume_ignore_no_checkpoint: false
 
   # You may use this section to create a W&B logger
-  create_wandb_logger: false
+  create_wandb_logger: true
   wandb_logger_kwargs:
-    # name: canary-flamingo ht
-    name: examine
+    name: canary-flamingo (lr=1.5e-5)
+    # name: test
     project: Canary

@@ -14,7 +14,7 @@
 
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
-from typing import List, Optional, Union
+from typing import List, Optional, Union, Any
 
 import torch
 
@@ -22,7 +22,7 @@ from nemo.collections.asr.modules.transformer import BeamSearchSequenceGenerator
 from nemo.collections.asr.parts.utils.rnnt_utils import Hypothesis, NBestHypotheses
 from nemo.collections.common.tokenizers.tokenizer_spec import TokenizerSpec
 from nemo.core import Typing, typecheck
-from nemo.core.neural_types import ChannelType, HypothesisType, LabelsType, MaskType, NeuralType
+from nemo.core.neural_types import ChannelType, HypothesisType, LabelsType, MaskType, NeuralType, StringType
 from nemo.utils import logging
 
 
@@ -111,6 +111,8 @@ class TransformerAEDBeamInfer(AEDBeamInfer, Typing):
             "encoder_input_mask": NeuralType(tuple(('B', 'T')), MaskType()),
             "decoder_input_ids": NeuralType(('B', 'T'), LabelsType()),
             "partial_hypotheses": NeuralType(optional=True),
+            "bert_embeddings": NeuralType(('B', 'T', 'D'), ChannelType(), optional=True),
+            "bert_mask": NeuralType(('B', 'T'), MaskType(), optional=True),
         }
 
     @property
@@ -163,13 +165,15 @@ class TransformerAEDBeamInfer(AEDBeamInfer, Typing):
                 )
             )
 
-    @typecheck()
+    @typecheck(ignore_collections=["translations"])
     def forward(
         self,
         encoder_hidden_states: torch.Tensor,
         encoder_input_mask: torch.Tensor,
         decoder_input_ids: Optional[torch.Tensor] = None,
         partial_hypotheses: Optional[List[Hypothesis]] = None,
+        bert_embeddings: Optional[torch.Tensor] = None,
+        bert_mask: Optional[torch.Tensor] = None,
     ):
         """Returns a list of hypotheses given an input batch of the encoder hidden embedding.
         Output token is generated auto-repressively.
@@ -188,6 +192,8 @@ class TransformerAEDBeamInfer(AEDBeamInfer, Typing):
                 encoder_input_mask=encoder_input_mask,
                 decoder_input_ids=decoder_input_ids,
                 return_beam_scores=True,
+                bert_embeddings=bert_embeddings,
+                bert_mask=bert_mask,
             )
 
             if not self.return_best_hypothesis:
