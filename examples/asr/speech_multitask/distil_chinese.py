@@ -89,20 +89,6 @@ def partial_init_student_from_teacher(teacher_model, student_model):
         strict=False
     )
 
-class DistillationWrapper:
-    def __init__(self, student: EncDecMultiTaskModel, teacher: EncDecMultiTaskModel):
-        self.student = student
-        self.teacher = teacher
-        self.teacher.eval()
-        for p in self.teacher.parameters():
-            p.requires_grad = False
-
-    def training_step(self, batch, batch_idx):
-        return self.student.training_step_with_teacher(batch, batch_idx, self.teacher)
-
-    def validation_step(self, batch, batch_idx):
-        return self.student.validation_step_with_teacher(batch, batch_idx, self.teacher)
-
 @hydra_runner(config_path="../conf/speech_multitask/", config_name="fast-conformer_aed")
 def main(cfg):
     logging.info(f'Hydra config: {OmegaConf.to_yaml(cfg)}')
