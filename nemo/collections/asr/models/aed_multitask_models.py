@@ -124,7 +124,8 @@ class EncDecMultiTaskModel(ASRModel, ExportableEncDecModel, ASRBPEMixin, ASRModu
     """Base class for AED multi-task models"""
 
     def __init__(self, cfg: DictConfig, trainer: Trainer = None):
-
+        print("cfg :", cfg)
+        input("stop")
         # Convert to Hydra 1.0 compatible DictConfig
         cfg = model_utils.convert_model_config_to_dict_config(cfg)
         cfg = model_utils.maybe_update_config_version(cfg)
@@ -177,10 +178,11 @@ class EncDecMultiTaskModel(ASRModel, ExportableEncDecModel, ASRBPEMixin, ASRModu
             if 'config_dict' in transf_decoder_cfg_dict:
                 transf_decoder_cfg_dict['config_dict']['vocab_size'] = vocab_size
 
-        self.bert_tokenizer = AutoTokenizer.from_pretrained("google-bert/bert-base-multilingual-cased")
-        self.bert = BertModel.from_pretrained("google-bert/bert-base-multilingual-cased")
-        for param in self.bert.parameters():
-            param.requires_grad = False
+        if cfg.get("use_bert", True):
+            self.bert_tokenizer = AutoTokenizer.from_pretrained("google-bert/bert-base-multilingual-cased")
+            self.bert = BertModel.from_pretrained("google-bert/bert-base-multilingual-cased")
+            for param in self.bert.parameters():
+                param.requires_grad = False
 
         self.transf_decoder = EncDecMultiTaskModel.from_config_dict(transf_decoder_cfg_dict)
 
@@ -696,7 +698,8 @@ class EncDecMultiTaskModel(ASRModel, ExportableEncDecModel, ASRBPEMixin, ASRModu
             enc_states = self.transf_encoder(encoder_states=enc_states, encoder_mask=enc_mask)
 
         if translations is not None:
-            bert_inputs = self.bert_tokenizer(translations, return_tensors='pt', padding=True)
+            # bert_inputs = self.bert_tokenizer(translations, return_tensors='pt', padding=True)
+            bert_inputs = self.bert_tokenizer(translations, return_tensors='pt', padding=True, max_length=512, truncation=True)
             device = next(self.parameters()).device
             bert_inputs = {key: value.to(device) for key, value in bert_inputs.items()}
             bert_outputs = self.bert(**bert_inputs)

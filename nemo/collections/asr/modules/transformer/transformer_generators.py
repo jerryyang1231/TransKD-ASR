@@ -159,8 +159,6 @@ class GreedySequenceGenerator(ConfidenceMethodMixin):
                 bert_embeddings=bert_embeddings,
                 bert_mask=bert_mask,
             )
-            # print("decoder_mems_list :", decoder_mems_list)
-            # input("stay")
         else:
             decoder_mems_list = self.decoder.forward(
                 decoder_hidden_states, decoder_input_mask, decoder_mems_list, return_mems=True
@@ -280,7 +278,7 @@ class GreedySequenceGenerator(ConfidenceMethodMixin):
     ):
         with torch.inference_mode():
             results = self._forward(
-                decoder_input_ids, encoder_hidden_states, encoder_input_mask, return_beam_scores=return_beam_scores, bert_embeddings=None, bert_mask=None,
+                decoder_input_ids, encoder_hidden_states, encoder_input_mask, return_beam_scores=return_beam_scores, bert_embeddings=bert_embeddings, bert_mask=bert_mask,
             )
             if not return_beam_scores:
                 return results
@@ -439,8 +437,8 @@ class BeamSearchSequenceGenerator(GreedySequenceGenerator):
             bert_embeddings = bert_embeddings.repeat(1, self.beam_size, 1).view(
                 -1, bert_src_length, bert_hidden_size
             )
-        else:
-            bert_hidden_size = decoder_mems_list[0].size(2)
+        # else:
+            # bert_hidden_size = decoder_mems_list[0].size(2)
 
         # pad_profile tracks finished hypotheses to generate only <pad> tokens
         # if <eos> or <pad> has been generated

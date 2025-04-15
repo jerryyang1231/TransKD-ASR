@@ -13,7 +13,10 @@ name: canary-180m-flash-finetune-matbn
 #  may help (or even be required to) stabilize the training.
 # init_from_pretrained_model: "nvidia/canary-1b"
 # init_from_pretrained_model: "nvidia/canary-180m-flash"
-init_from_ptl_ckpt: /share/nas169/jerryyang/NeMo/examples/asr/speech_multitask/matbn_2/canary-180m-flash-finetune-matbn/2025-03-27_13-59-10/checkpoints/canary-180m-flash-finetune-matbn--val_loss=0.3606-epoch=29.ckpt
+
+# reserve  for student
+# init_from_pretrained_model: null
+init_from_ptl_ckpt: /share/nas169/jerryyang/NeMo/examples/asr/speech_multitask/matbn_2/canary-180m-flash-finetune-matbn/2025-04-10_02-03-21/checkpoints/canary-180m-flash-finetune-matbn--val_loss=0.2771-epoch=28.ckpt
 
 # If using example training script, below will be used to instantiate spl_tokens tokenizer.
 # Similar can be done by calling CanaryTokenizer.build_special_tokenizer(tokens, output_dir).
@@ -24,6 +27,7 @@ spl_tokens:
   force_rebuild: false  # Set to true to build new tokenizer each time.
 
 model:
+  use_bert: true
   sample_rate: 16000
   label_smoothing: 0.0
   use_loss_mask_for_prompt: false
@@ -41,7 +45,7 @@ model:
   train_ds:
     use_lhotse: true
     tarred_audio_filepaths: null
-    manifest_filepath: /share/nas169/jerryyang/corpus/matbn/final_train.json
+    manifest_filepath: /share/nas169/jerryyang/corpus/matbn/eng_train.json
     sample_rate: ${model.sample_rate}
     shuffle: true
     num_workers: 8
@@ -61,7 +65,7 @@ model:
 
   validation_ds:
     use_lhotse: true
-    manifest_filepath: /share/nas169/jerryyang/corpus/matbn/final_dev.json
+    manifest_filepath: /share/nas169/jerryyang/corpus/matbn/eng_dev.json
     sample_rate: ${model.sample_rate}
     batch_size: 8 # you may increase batch_size if your memory allows
     shuffle: false
@@ -74,7 +78,7 @@ model:
 
   test_ds:
     use_lhotse: true
-    manifest_filepath: /share/nas169/jerryyang/corpus/matbn/final_test.json
+    manifest_filepath: /share/nas169/jerryyang/corpus/matbn/eng_test.json
     sample_rate: ${model.sample_rate}
     batch_size: 8 # you may increase batch_size if your memory allows
     shuffle: false
@@ -238,8 +242,7 @@ model:
 
   optim:
     name: adamw
-    # lr: 1.5e-4
-    lr: 1.5e-5
+    lr: 1.5e-3
     # optimizer arguments
     betas: [0.9, 0.98]
     # less necessity for weight_decay as we already have large augmentations with SpecAug
@@ -296,8 +299,7 @@ exp_manager:
   resume_ignore_no_checkpoint: false
 
   # You may use this section to create a W&B logger
-  create_wandb_logger: true
+  create_wandb_logger: false
   wandb_logger_kwargs:
-    name: canary-flamingo (lr=1.5e-5)
-    # name: test
+    name: canary-flamingo (eng)
     project: Canary

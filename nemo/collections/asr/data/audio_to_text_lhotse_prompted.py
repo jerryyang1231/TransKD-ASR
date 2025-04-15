@@ -99,6 +99,7 @@ class PromptedAudioToTextLhotseDataset(torch.utils.data.Dataset):
             else:
                 actual_cut = cut
             translation = actual_cut.custom.get("translation", "")
+            # translation = actual_cut.custom.get("text", "")
             translations.append(translation)
 
         return PromptedAudioToTextMiniBatch(

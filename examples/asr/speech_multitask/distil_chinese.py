@@ -13,16 +13,12 @@
 # limitations under the License.
 
 # my command
-# python chinese.py --config-name=matbn_2_eng
-# python chinese.py --config-name=matbn_2_jpn
-# python chinese.py --config-name=matbn_2_kor
-# python chinese.py --config-name=matbn_2_hin
-# python chinese.py --config-name=matbn_2_tha
-# python chinese.py --config-name=matbn_2_oracle
+# python distil_chinese.py --config-name=distil_matbn_2_eng
 
 import time
 import lightning.pytorch as pl
 from omegaconf import OmegaConf
+import copy
 import os
 import sys
 sys.path.insert(0, "/share/nas169/jerryyang/NeMo")
@@ -122,6 +118,20 @@ def setup_dataloaders(aed_model, cfg):
 
     return aed_model
 
+def partial_init_student_from_teacher(teacher_model, student_model):
+
+    # 1) 複製 encoder
+    student_model.encoder.load_state_dict(
+        teacher_model.encoder.state_dict(), 
+        strict=True
+    )
+
+    # 2) 複製 decoder
+    student_model.decoder.load_state_dict(
+        teacher_model.decoder.state_dict(),
+        strict=False
+    )
+
 @hydra_runner(config_path="../conf/speech_multitask/", config_name="fast-conformer_aed")
 def main(cfg):
     logging.info(f'Hydra config: {OmegaConf.to_yaml(cfg)}')
@@ -139,38 +149,70 @@ def main(cfg):
         )
         cfg.model.tokenizer.langs.spl_tokens.dir = spl_cfg["model_dir"]
     
-    aed_model = get_base_model(trainer, cfg)
+    teacher_model = get_base_model(trainer, cfg)
 
-    # Check vocabulary type and update if needed
-    aed_model = check_vocabulary(aed_model, cfg)
+    # 為避免影響 teacher 模型，先複製一個新的 config
+    # cfg_student = OmegaConf.create(copy.deepcopy(OmegaConf.to_container(cfg, resolve=True)))
+    cfg_student = copy.deepcopy(cfg)
 
-    # Freeze 整個模型除了 adapter 部分
-    # adapter_keywords = ["bert_projection", "zero_sub_layer", "layer_norm_0", "attn_gate", "ff_ln", "ff_gate", "ff"]
-    adapter_keywords = ["zero_sub_layer", "layer_norm_0", "attn_gate", "ff_ln", "ff_gate", "ff"]
-    for name, param in aed_model.named_parameters():
-        if any(keyword in name for keyword in adapter_keywords):
-            param.requires_grad = True
-        else:
-            param.requires_grad = False
+    # 刪除不再需要的初始化參數，以免違反 Nemo 的檢查規則
+    if "init_from_ptl_ckpt" in cfg_student:
+        del cfg_student["init_from_ptl_ckpt"]
 
-    # Avoid key error
-    aed_model.change_prompt()
+    # 更新學生初始化的參數來源
+    cfg_student["init_from_pretrained_model"] = "nvidia/canary-180m-flash"
 
-    # Setup Data
-    aed_model = setup_dataloaders(aed_model, cfg)
+    # 關閉 BERT 標誌，這樣學生模型就不會嘗試建立 BERT 模塊
+    cfg_student["model"]["use_bert"] = False
+    logging.info("Updated student config:\n" + OmegaConf.to_yaml(cfg_student))
+
+    # 使用更新後的 cfg 初始化 student 模型
+    # student_model = get_base_model(trainer, cfg_student)
+    student_model = EncDecMultiTaskModel(cfg=cfg_student.model, trainer=trainer)
+    student_model.maybe_init_from_pretrained_checkpoint(cfg_student)
+
+    # student_model = EncDecMultiTaskModel(cfg=cfg.model, trainer=trainer)
+    # student_model.maybe_init_from_pretrained_checkpoint(cfg)
     
-    # Setup Optimizer
-    aed_model.setup_optimization(cfg.model.optim)
+    # # Check vocabulary type and update if needed
+    # teacher_model = check_vocabulary(teacher_model, cfg)
+    # student_model = check_vocabulary(teacher_model, cfg)
 
-    # Setup SpecAug
-    if hasattr(cfg.model, 'spec_augment') and cfg.model.spec_augment is not None:
-        aed_model.spec_augment = EncDecMultiTaskModel.from_config_dict(cfg.model.spec_augment)
+    # for name, param in teacher_model.named_parameters():
+    #     if any(keyword in name for keyword in adapter_keywords):
+    #         param.requires_grad = True
+    #     else:
+    #         param.requires_grad = False
 
-    trainer.fit(aed_model)
+    # # Freeze 整個模型除了 adapter 部分
+    # adapter_keywords = ["zero_sub_layer", "layer_norm_0", "attn_gate", "ff_ln", "ff_gate", "ff"]
+    # for name, param in student_model.named_parameters():
+    #     if any(keyword in name for keyword in adapter_keywords):
+    #         param.requires_grad = True
+    #     else:
+    #         param.requires_grad = False
 
-    if hasattr(cfg.model, 'test_ds') and cfg.model.test_ds.manifest_filepath is not None:
-        if aed_model.prepare_test(trainer):
-            trainer.test(aed_model)
+    # # Avoid key error
+    # teacher_model.change_prompt()
+    # student_model.change_prompt()
+
+    # # Setup Data
+    # teacher_model = setup_dataloaders(teacher_model, cfg)
+    # student_model = setup_dataloaders(student_model, cfg)
+    
+    # # Setup Optimizer
+    # teacher_model.setup_optimization(cfg.model.optim)
+    # student_model.setup_optimization(cfg.model.optim)
+
+    # # Setup SpecAug
+    # if hasattr(cfg.model, 'spec_augment') and cfg.model.spec_augment is not None:
+    #     student_model.spec_augment = EncDecMultiTaskModel.from_config_dict(cfg.model.spec_augment)
+
+    # trainer.fit(student_model)
+
+    # if hasattr(cfg.model, 'test_ds') and cfg.model.test_ds.manifest_filepath is not None:
+    #     if student_model.prepare_test(trainer):
+    #         trainer.test(student_model)
 
 if __name__ == '__main__':
     main()
