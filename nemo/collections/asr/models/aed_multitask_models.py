@@ -124,8 +124,6 @@ class EncDecMultiTaskModel(ASRModel, ExportableEncDecModel, ASRBPEMixin, ASRModu
     """Base class for AED multi-task models"""
 
     def __init__(self, cfg: DictConfig, trainer: Trainer = None):
-        print("cfg :", cfg)
-        input("stop")
         # Convert to Hydra 1.0 compatible DictConfig
         cfg = model_utils.convert_model_config_to_dict_config(cfg)
         cfg = model_utils.maybe_update_config_version(cfg)
@@ -221,7 +219,10 @@ class EncDecMultiTaskModel(ASRModel, ExportableEncDecModel, ASRBPEMixin, ASRModu
         with open_dict(self.cfg.loss):
             self.cfg.loss.pad_id = self.tokenizer.pad_id
 
-        self.loss = EncDecMultiTaskModel.from_config_dict(self.cfg.loss)
+        self.teacher = None  # 注意：不要命名為 self.teacher_model！
+        # self.loss = EncDecMultiTaskModel.from_config_dict(self.cfg.loss)
+        self.ce_loss_fn = EncDecMultiTaskModel.from_config_dict(self.cfg.loss)
+        self.kd_loss_fn = torch.nn.KLDivLoss(reduction='none')
 
         if hasattr(self.cfg, 'spec_augment') and self.cfg.spec_augment is not None:
             self.spec_augmentation = EncDecMultiTaskModel.from_config_dict(self.cfg.spec_augment)
@@ -403,9 +404,11 @@ class EncDecMultiTaskModel(ASRModel, ExportableEncDecModel, ASRBPEMixin, ASRModu
         with open_dict(self.cfg.loss):
             self.cfg.loss.pad_id = self.tokenizer.pad_id
 
-        del self.loss
-        self.loss = EncDecMultiTaskModel.from_config_dict(self.cfg.loss)
-
+        # del self.loss
+        # self.loss = EncDecMultiTaskModel.from_config_dict(self.cfg.loss)
+        del self.ce_loss_fn
+        self.ce_loss_fn = EncDecMultiTaskModel.from_config_dict(self.cfg.loss)
+        
         # Update config
         with open_dict(self.cfg):
             self.cfg.prompt_format = prompt_format
@@ -734,12 +737,12 @@ class EncDecMultiTaskModel(ASRModel, ExportableEncDecModel, ASRBPEMixin, ASRModu
         tot_frames = torch.as_tensor(batch.audio.numel(), device=num_frames.device, dtype=torch.float)
         tot_tokens = torch.as_tensor(batch.prompted_transcript.numel(), device=num_frames.device, dtype=torch.float)
 
-        transf_log_probs, encoded_len, enc_states, enc_mask, bert_embeddings, bert_mask = self.forward(
+        student_log_probs, encoded_len, enc_states, enc_mask, bert_embeddings, bert_mask = self.forward(
             input_signal=batch.audio,
             input_signal_length=batch.audio_lens,
             transcript=input_ids,
             transcript_length=input_ids_lens,
-            translations = batch.translations,
+            translations = None,
         )
 
         # Mask components: 1) discard padding  &  2) discard prompt (notice the negation)
@@ -768,12 +771,27 @@ class EncDecMultiTaskModel(ASRModel, ExportableEncDecModel, ASRBPEMixin, ASRModu
         input_ids, labels = batch.get_decoder_inputs_outputs()
         input_ids_lens = batch.prompted_transcript_lens - 1
 
+        # teacher forward: temporarily disable log_softmax
+        with self.teacher.log_softmax.with_log_softmax_enabled(False):
+            teacher_logits, *_ = self.teacher.forward(
+                input_signal=batch.audio,
+                input_signal_length=batch.audio_lens,
+                transcript=input_ids,
+                transcript_length=input_ids_lens,
+                translations=batch.translations,
+            )
+            print("teacher_logits :", teacher_logits)
+            
+            T = self.cfg.distillation.temperature
+            teacher_probs = F.softmax(teacher_logits / T, dim=-1)
+
+        input("stop")
         transf_log_probs, encoded_len, enc_states, enc_mask, bert_embeddings, bert_mask = self.forward(
             input_signal=batch.audio,
             input_signal_length=batch.audio_lens,
             transcript=input_ids,
             transcript_length=batch.prompted_transcript_lens,
-            translations = batch.translations,
+            translations=None,
         )
 
         # Mask components: 1) discard padding  &  2) discard prompt (notice the negation)

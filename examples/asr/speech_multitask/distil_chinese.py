@@ -28,49 +28,6 @@ from nemo.utils import logging, model_utils
 from nemo.utils.exp_manager import exp_manager
 from nemo.utils.trainer_utils import resolve_trainer_cfg
 
-
-def get_base_model(trainer, cfg):
-    aed_model = None
-    nemo_model_path = cfg.get('init_from_nemo_model', None)
-    pretrained_name = cfg.get('init_from_pretrained_model', None)
-    ptl_ckpt_path = cfg.get('init_from_ptl_ckpt', None)
-
-    # Ensure that only one initialization option is provided
-    provided_options = [opt for opt in [nemo_model_path, pretrained_name, ptl_ckpt_path] if opt is not None]
-    if len(provided_options) > 1:
-        raise ValueError("Only one initialization parameter can be provided: init_from_nemo_model, init_from_pretrained_model, or init_from_ptl_ckpt")
-    elif len(provided_options) == 0:
-        raise ValueError("At least one initialization parameter must be provided: init_from_nemo_model, init_from_pretrained_model, or init_from_ptl_ckpt")
-    
-    if nemo_model_path is not None:
-        # Restore model from Nemo model file
-        aed_model = EncDecMultiTaskModel.restore_from(restore_path=nemo_model_path)
-    elif pretrained_name is not None:
-        # Due to potential first time download of the model on the cluster, we need to make sure that only one
-        # rank downloads the model and the others wait for the download to finish.
-        num_ranks = trainer.num_devices * trainer.num_devices
-
-        if num_ranks > 1 and is_global_rank_zero():
-            aed_model = EncDecMultiTaskModel.from_pretrained(model_name=pretrained_name)
-        else:
-            # Sleep on all ranks for at least 60 seconds
-            wait_time = int(cfg.get('exp_manager', {}).get('seconds_to_sleep', 60))
-            if wait_time < 60:
-                wait_time = 60
-
-            logging.info(f"Sleeping for at least {wait_time} seconds to wait for model download to finish.")
-
-            time.sleep(wait_time)
-
-            # restore model from cached model dir
-            aed_model = EncDecMultiTaskModel.from_pretrained(model_name=pretrained_name)
-    elif ptl_ckpt_path is not None:
-        aed_model = EncDecMultiTaskModel(cfg=cfg.model, trainer=trainer)
-        aed_model.maybe_init_from_pretrained_checkpoint(cfg)
-
-    aed_model.set_trainer(trainer)
-    return aed_model
-
 def check_vocabulary(aed_model, cfg):
     if hasattr(cfg.model.tokenizer, 'update_tokenizer') and cfg.model.tokenizer.update_tokenizer:
         if hasattr(cfg.model.char_labels, 'update_labels') and cfg.model.char_labels.update_labels:
@@ -126,11 +83,25 @@ def partial_init_student_from_teacher(teacher_model, student_model):
         strict=True
     )
 
-    # 2) 複製 decoder
-    student_model.decoder.load_state_dict(
-        teacher_model.decoder.state_dict(),
+    # 2) 複製 transf_decoder
+    student_model.transf_decoder.load_state_dict(
+        teacher_model.transf_decoder.state_dict(),
         strict=False
     )
+
+class DistillationWrapper:
+    def __init__(self, student: EncDecMultiTaskModel, teacher: EncDecMultiTaskModel):
+        self.student = student
+        self.teacher = teacher
+        self.teacher.eval()
+        for p in self.teacher.parameters():
+            p.requires_grad = False
+
+    def training_step(self, batch, batch_idx):
+        return self.student.training_step_with_teacher(batch, batch_idx, self.teacher)
+
+    def validation_step(self, batch, batch_idx):
+        return self.student.validation_step_with_teacher(batch, batch_idx, self.teacher)
 
 @hydra_runner(config_path="../conf/speech_multitask/", config_name="fast-conformer_aed")
 def main(cfg):
@@ -149,70 +120,61 @@ def main(cfg):
         )
         cfg.model.tokenizer.langs.spl_tokens.dir = spl_cfg["model_dir"]
     
-    teacher_model = get_base_model(trainer, cfg)
+    teacher_model = EncDecMultiTaskModel(cfg=cfg.model, trainer=trainer)
+    teacher_model.maybe_init_from_pretrained_checkpoint(cfg)
 
-    # 為避免影響 teacher 模型，先複製一個新的 config
-    # cfg_student = OmegaConf.create(copy.deepcopy(OmegaConf.to_container(cfg, resolve=True)))
     cfg_student = copy.deepcopy(cfg)
-
-    # 刪除不再需要的初始化參數，以免違反 Nemo 的檢查規則
+    OmegaConf.set_struct(cfg_student, False)
     if "init_from_ptl_ckpt" in cfg_student:
         del cfg_student["init_from_ptl_ckpt"]
-
-    # 更新學生初始化的參數來源
     cfg_student["init_from_pretrained_model"] = "nvidia/canary-180m-flash"
-
-    # 關閉 BERT 標誌，這樣學生模型就不會嘗試建立 BERT 模塊
     cfg_student["model"]["use_bert"] = False
-    logging.info("Updated student config:\n" + OmegaConf.to_yaml(cfg_student))
+    cfg_student["model"]["transf_decoder"]["config_dict"]["add_gated_x_attn"] = False
 
-    # 使用更新後的 cfg 初始化 student 模型
-    # student_model = get_base_model(trainer, cfg_student)
     student_model = EncDecMultiTaskModel(cfg=cfg_student.model, trainer=trainer)
-    student_model.maybe_init_from_pretrained_checkpoint(cfg_student)
-
-    # student_model = EncDecMultiTaskModel(cfg=cfg.model, trainer=trainer)
-    # student_model.maybe_init_from_pretrained_checkpoint(cfg)
+    partial_init_student_from_teacher(teacher_model, student_model)
+    student_model.set_trainer(trainer)
     
-    # # Check vocabulary type and update if needed
-    # teacher_model = check_vocabulary(teacher_model, cfg)
-    # student_model = check_vocabulary(teacher_model, cfg)
+    # Check vocabulary type and update if needed
+    teacher_model = check_vocabulary(teacher_model, cfg)
+    student_model = check_vocabulary(teacher_model, cfg_student)
 
-    # for name, param in teacher_model.named_parameters():
-    #     if any(keyword in name for keyword in adapter_keywords):
-    #         param.requires_grad = True
-    #     else:
-    #         param.requires_grad = False
+    teacher_model.eval()
+    for p in teacher_model.parameters():
+        p.requires_grad = False
 
-    # # Freeze 整個模型除了 adapter 部分
-    # adapter_keywords = ["zero_sub_layer", "layer_norm_0", "attn_gate", "ff_ln", "ff_gate", "ff"]
-    # for name, param in student_model.named_parameters():
-    #     if any(keyword in name for keyword in adapter_keywords):
-    #         param.requires_grad = True
-    #     else:
-    #         param.requires_grad = False
+    # Freeze all
+    for name, param in student_model.named_parameters():
+        param.requires_grad = False
 
-    # # Avoid key error
-    # teacher_model.change_prompt()
-    # student_model.change_prompt()
+    # Unfreeze decoder
+    for name, param in student_model.transf_decoder.named_parameters():
+        param.requires_grad = True
 
-    # # Setup Data
-    # teacher_model = setup_dataloaders(teacher_model, cfg)
-    # student_model = setup_dataloaders(student_model, cfg)
+    # Unfreeze output head
+    for name, param in student_model.log_softmax.named_parameters():
+        param.requires_grad = True
+
+    # Avoid key error
+    teacher_model.change_prompt()
+    student_model.change_prompt()
+
+    # Setup Data
+    teacher_model = setup_dataloaders(teacher_model, cfg)
+    student_model = setup_dataloaders(student_model, cfg_student)
     
-    # # Setup Optimizer
-    # teacher_model.setup_optimization(cfg.model.optim)
-    # student_model.setup_optimization(cfg.model.optim)
+    # Setup Optimizer
+    student_model.setup_optimization(cfg.model.optim)
 
-    # # Setup SpecAug
-    # if hasattr(cfg.model, 'spec_augment') and cfg.model.spec_augment is not None:
-    #     student_model.spec_augment = EncDecMultiTaskModel.from_config_dict(cfg.model.spec_augment)
+    # Setup SpecAug
+    if hasattr(cfg.model, 'spec_augment') and cfg.model.spec_augment is not None:
+        student_model.spec_augment = EncDecMultiTaskModel.from_config_dict(cfg.model.spec_augment)
 
     # trainer.fit(student_model)
 
-    # if hasattr(cfg.model, 'test_ds') and cfg.model.test_ds.manifest_filepath is not None:
-    #     if student_model.prepare_test(trainer):
-    #         trainer.test(student_model)
+    if hasattr(cfg.model, 'test_ds') and cfg.model.test_ds.manifest_filepath is not None:
+        if student_model.prepare_test(trainer):
+            trainer.test(student_model)
 
 if __name__ == '__main__':
     main()

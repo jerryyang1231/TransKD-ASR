@@ -14,8 +14,6 @@ name: canary-180m-flash-finetune-matbn
 # init_from_pretrained_model: "nvidia/canary-1b"
 # init_from_pretrained_model: "nvidia/canary-180m-flash"
 
-# reserve  for student
-# init_from_pretrained_model: null
 init_from_ptl_ckpt: /share/nas169/jerryyang/NeMo/examples/asr/speech_multitask/matbn_2/canary-180m-flash-finetune-matbn/2025-04-10_02-03-21/checkpoints/canary-180m-flash-finetune-matbn--val_loss=0.2771-epoch=28.ckpt
 
 # If using example training script, below will be used to instantiate spl_tokens tokenizer.
@@ -257,6 +255,11 @@ model:
       warmup_steps: 2500
       warmup_ratio: null
       min_lr: 1e-6
+  
+  distillation:
+    temperature: 2.0
+    alpha: 0.5         # for CE loss
+    beta: 0.5          # for KD loss
 
 trainer:
   devices: 1 # number of GPUs
