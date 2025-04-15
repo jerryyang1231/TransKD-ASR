@@ -21,6 +21,7 @@ from typing import Any, Dict, List, Optional, Union
 
 import numpy as np
 import torch
+import torch.nn.functional as F
 from lightning.pytorch import Trainer
 from omegaconf import DictConfig, ListConfig, OmegaConf, open_dict
 from torch.utils.data import DataLoader
@@ -219,7 +220,8 @@ class EncDecMultiTaskModel(ASRModel, ExportableEncDecModel, ASRBPEMixin, ASRModu
         with open_dict(self.cfg.loss):
             self.cfg.loss.pad_id = self.tokenizer.pad_id
 
-        self.teacher = None  # 注意：不要命名為 self.teacher_model！
+        # 不要寫self.teacher = None，會造成無窮迴圈
+        self._teacher = None
         # self.loss = EncDecMultiTaskModel.from_config_dict(self.cfg.loss)
         self.ce_loss_fn = EncDecMultiTaskModel.from_config_dict(self.cfg.loss)
         self.kd_loss_fn = torch.nn.KLDivLoss(reduction='none')
@@ -241,6 +243,12 @@ class EncDecMultiTaskModel(ASRModel, ExportableEncDecModel, ASRBPEMixin, ASRModu
         # Setup encoder adapters (from ASRAdapterModelMixin)
         self.setup_adapters()
 
+    def set_teacher(self, teacher_model):
+        self._teacher = teacher_model
+        self._teacher.eval()
+        for p in self._teacher.parameters():
+            p.requires_grad = False
+    
     def change_decoding_strategy(self, decoding_cfg: DictConfig):
         """
         Changes decoding strategy used during Multi Task decoding process.
@@ -737,13 +745,43 @@ class EncDecMultiTaskModel(ASRModel, ExportableEncDecModel, ASRBPEMixin, ASRModu
         tot_frames = torch.as_tensor(batch.audio.numel(), device=num_frames.device, dtype=torch.float)
         tot_tokens = torch.as_tensor(batch.prompted_transcript.numel(), device=num_frames.device, dtype=torch.float)
 
-        student_log_probs, encoded_len, enc_states, enc_mask, bert_embeddings, bert_mask = self.forward(
-            input_signal=batch.audio,
-            input_signal_length=batch.audio_lens,
-            transcript=input_ids,
-            transcript_length=input_ids_lens,
-            translations = None,
-        )
+        # temporarily disable log_softmax
+        with self._teacher.log_softmax.with_log_softmax_enabled(False):
+            teacher_logits, *_ = self._teacher.forward(
+                input_signal=batch.audio,
+                input_signal_length=batch.audio_lens,
+                transcript=input_ids,
+                transcript_length=input_ids_lens,
+                translations=batch.translations,
+            )
+
+        with self.log_softmax.with_log_softmax_enabled(False):
+            student_logits, encoded_len, enc_states, enc_mask, bert_embeddings, bert_mask = self.forward(
+                input_signal=batch.audio,
+                input_signal_length=batch.audio_lens,
+                transcript=input_ids,
+                transcript_length=input_ids_lens,
+                translations = None,
+            )
+
+        # T記得改成1.0
+        T = self.cfg.distillation.temperature
+        teacher_probs = F.softmax(teacher_logits / T, dim=-1)
+        student_log_probs = F.log_softmax(student_logits / T, dim=-1)
+
+        # (A) 先算 "逐 token" KL-div, shape = [batch, seq_len, vocab_size]
+        kl_all = self.kd_loss_fn(student_log_probs, teacher_probs)
+
+        # (B) 根據 labels 遮蔽要忽略的 token (labels = -100)
+        #     通常 labels = -100 表示該位置的 label 無效 (padding / ignore)
+        padding_mask = (labels != -100).unsqueeze(-1)  # [batch, seq_len, 1]
+        kl_all = kl_all * padding_mask                 # 將無效位置的 KL 設為 0
+        
+        # (C) 將剩餘位置的 KL 做 sum，再除以 mask.sum() (有效token總數)，得到「平均」
+        kd_loss = kl_all.sum() / padding_mask.sum()
+
+        # (D) 別忘了再乘上 (T*T) 
+        kd_loss = kd_loss * (T * T)
 
         # Mask components: 1) discard padding  &  2) discard prompt (notice the negation)
         # For a full decoder sequence O with len M, the loss mask skips the first element,
@@ -753,10 +791,16 @@ class EncDecMultiTaskModel(ASRModel, ExportableEncDecModel, ASRBPEMixin, ASRModu
             loss_mask = lens_to_mask(input_ids_lens, maxlen) & ~lens_to_mask(batch.prompt_lens - 1, maxlen)
         else:
             loss_mask = None
-        audio_loss = self.loss(log_probs=transf_log_probs, labels=labels, output_mask=loss_mask)
+        ce_loss = self.ce_loss_fn(log_probs=student_log_probs, labels=labels, output_mask=loss_mask)
+
+        alpha = self.cfg.distillation.alpha
+        beta  = self.cfg.distillation.beta
+        total_loss  = alpha * ce_loss + beta * kd_loss
 
         tensorboard_logs = {
-            'train_loss': audio_loss,
+            'train_ce_loss': ce_loss,
+            'train_kd_loss': kd_loss,
+            'train_total_loss': total_loss,
             'learning_rate': torch.as_tensor(self._optimizer.param_groups[0]['lr']),
             'batch_size': torch.as_tensor(batch.audio.shape[0]),
             'num_frames': num_frames,
@@ -765,35 +809,49 @@ class EncDecMultiTaskModel(ASRModel, ExportableEncDecModel, ASRBPEMixin, ASRModu
             'output_to_padding_ratio': num_tokens / tot_tokens,
         }
 
-        return {'loss': audio_loss, 'log': tensorboard_logs}
+        return {'loss': total_loss, 'log': tensorboard_logs}
 
     def validation_pass(self, batch: PromptedAudioToTextMiniBatch, batch_idx, dataloader_idx=0, eval_mode="val"):
         input_ids, labels = batch.get_decoder_inputs_outputs()
         input_ids_lens = batch.prompted_transcript_lens - 1
 
-        # teacher forward: temporarily disable log_softmax
-        with self.teacher.log_softmax.with_log_softmax_enabled(False):
-            teacher_logits, *_ = self.teacher.forward(
+        # temporarily disable log_softmax
+        with self._teacher.log_softmax.with_log_softmax_enabled(False):
+            teacher_logits, *_ = self._teacher.forward(
                 input_signal=batch.audio,
                 input_signal_length=batch.audio_lens,
                 transcript=input_ids,
                 transcript_length=input_ids_lens,
                 translations=batch.translations,
             )
-            print("teacher_logits :", teacher_logits)
-            
-            T = self.cfg.distillation.temperature
-            teacher_probs = F.softmax(teacher_logits / T, dim=-1)
 
-        input("stop")
-        transf_log_probs, encoded_len, enc_states, enc_mask, bert_embeddings, bert_mask = self.forward(
-            input_signal=batch.audio,
-            input_signal_length=batch.audio_lens,
-            transcript=input_ids,
-            transcript_length=batch.prompted_transcript_lens,
-            translations=None,
-        )
+        with self.log_softmax.with_log_softmax_enabled(False):
+            student_logits, encoded_len, enc_states, enc_mask, bert_embeddings, bert_mask = self.forward(
+                input_signal=batch.audio,
+                input_signal_length=batch.audio_lens,
+                transcript=input_ids,
+                transcript_length=batch.prompted_transcript_lens,
+                translations=None,
+            )
 
+        T = 1.0
+        teacher_probs = F.softmax(teacher_logits / T, dim=-1)
+        student_log_probs = F.log_softmax(student_logits / T, dim=-1)
+
+        # (A) 先算 "逐 token" KL-div, shape = [batch, seq_len, vocab_size]
+        kl_all = self.kd_loss_fn(student_log_probs, teacher_probs)
+
+        # (B) 根據 labels 遮蔽要忽略的 token (labels = -100)
+        #     通常 labels = -100 表示該位置的 label 無效 (padding / ignore)
+        padding_mask = (labels != -100).unsqueeze(-1)  # [batch, seq_len, 1]
+        kl_all = kl_all * padding_mask                 # 將無效位置的 KL 設為 0
+        
+        # (C) 將剩餘位置的 KL 做 sum，再除以 mask.sum() (有效token總數)，得到「平均」
+        kd_loss = kl_all.sum() / padding_mask.sum()
+
+        # (D) 別忘了再乘上 (T*T) 
+        kd_loss = kd_loss * (T * T)
+        
         # Mask components: 1) discard padding  &  2) discard prompt (notice the negation)
         # For a full decoder sequence O with len M, the loss mask skips the first element,
         # covering the remaining M-1 elements - hence we subtract 1 from prompt lens to account BOS.
@@ -803,10 +861,17 @@ class EncDecMultiTaskModel(ASRModel, ExportableEncDecModel, ASRBPEMixin, ASRModu
             num_measurements = loss_mask.long().sum()
         else:
             loss_mask = None
-            num_measurements = transf_log_probs.shape[0] * transf_log_probs.shape[1]
-        transf_loss = self.loss(log_probs=transf_log_probs, labels=labels, output_mask=loss_mask)
-        self.val_loss(loss=transf_loss, num_measurements=num_measurements)
-        output_dict = {f'{eval_mode}_loss': transf_loss}
+            num_measurements = student_log_probs.shape[0] * student_log_probs.shape[1]
+        ce_loss = self.ce_loss_fn(log_probs=student_log_probs, labels=labels, output_mask=loss_mask)
+    
+        alpha = self.cfg.distillation.alpha
+        beta  = self.cfg.distillation.beta
+        total_loss  = alpha * ce_loss + beta * kd_loss
+        self.val_loss(loss=total_loss, num_measurements=num_measurements)
+        output_dict = {f'{eval_mode}_ce_loss': ce_loss,
+                    f'{eval_mode}_kd_loss': kd_loss,
+                    f'{eval_mode}_total_loss': total_loss,
+                    }
 
         self.wer.update(
             predictions=enc_states,

@@ -106,9 +106,11 @@ def main(cfg):
         )
         cfg.model.tokenizer.langs.spl_tokens.dir = spl_cfg["model_dir"]
     
+    # Init teacher
     teacher_model = EncDecMultiTaskModel(cfg=cfg.model, trainer=trainer)
     teacher_model.maybe_init_from_pretrained_checkpoint(cfg)
 
+    # updated config
     cfg_student = copy.deepcopy(cfg)
     OmegaConf.set_struct(cfg_student, False)
     if "init_from_ptl_ckpt" in cfg_student:
@@ -117,17 +119,17 @@ def main(cfg):
     cfg_student["model"]["use_bert"] = False
     cfg_student["model"]["transf_decoder"]["config_dict"]["add_gated_x_attn"] = False
 
+    # Init student
     student_model = EncDecMultiTaskModel(cfg=cfg_student.model, trainer=trainer)
-    partial_init_student_from_teacher(teacher_model, student_model)
     student_model.set_trainer(trainer)
-    
+
     # Check vocabulary type and update if needed
     teacher_model = check_vocabulary(teacher_model, cfg)
-    student_model = check_vocabulary(teacher_model, cfg_student)
+    student_model = check_vocabulary(student_model, cfg_student)
 
-    teacher_model.eval()
-    for p in teacher_model.parameters():
-        p.requires_grad = False
+    partial_init_student_from_teacher(teacher_model, student_model)
+
+    student_model.set_teacher(teacher_model)
 
     # Freeze all
     for name, param in student_model.named_parameters():
@@ -150,15 +152,15 @@ def main(cfg):
     student_model = setup_dataloaders(student_model, cfg_student)
     
     # Setup Optimizer
-    student_model.setup_optimization(cfg.model.optim)
+    student_model.setup_optimization(cfg_student.model.optim)
 
     # Setup SpecAug
-    if hasattr(cfg.model, 'spec_augment') and cfg.model.spec_augment is not None:
-        student_model.spec_augment = EncDecMultiTaskModel.from_config_dict(cfg.model.spec_augment)
+    if hasattr(cfg_student.model, 'spec_augment') and cfg_student.model.spec_augment is not None:
+        student_model.spec_augment = EncDecMultiTaskModel.from_config_dict(cfg_student.model.spec_augment)
 
-    # trainer.fit(student_model)
+    trainer.fit(student_model)
 
-    if hasattr(cfg.model, 'test_ds') and cfg.model.test_ds.manifest_filepath is not None:
+    if hasattr(cfg_student.model, 'test_ds') and cfg_student.model.test_ds.manifest_filepath is not None:
         if student_model.prepare_test(trainer):
             trainer.test(student_model)
 
